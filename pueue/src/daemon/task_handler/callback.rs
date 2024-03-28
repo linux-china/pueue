@@ -53,6 +53,7 @@ impl TaskHandler {
         parameters.insert("command", task.command.clone());
         parameters.insert("path", (*task.path.to_string_lossy()).to_owned());
         parameters.insert("group", task.group.clone());
+        parameters.insert("label", task.label.clone().unwrap_or("".to_owned()));
 
         // Result takes the TaskResult Enum strings, unless it didn't finish yet.
         if let TaskStatus::Done(result) = &task.status {
