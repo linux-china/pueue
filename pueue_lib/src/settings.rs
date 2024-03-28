@@ -134,6 +134,8 @@ pub struct Daemon {
     /// Windows default:
     /// `vec!["powershell", "-c", "[Console]::OutputEncoding = [Text.UTF8Encoding]::UTF8; {{ pueue_command_string }}"]`
     pub shell_command: Option<Vec<String>>,
+    pub worker_id: Option<String>,
+    pub nats_host: Option<String>
 }
 
 impl Default for Shared {
@@ -182,6 +184,8 @@ impl Default for Daemon {
             callback_log_lines: default_callback_log_lines(),
             shell_command: None,
             env_vars: HashMap::new(),
+            worker_id: None,
+            nats_host: None
         }
     }
 }
