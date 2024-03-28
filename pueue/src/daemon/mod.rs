@@ -78,6 +78,20 @@ pub async fn run(config_path: Option<PathBuf>, profile: Option<String>, test: bo
     let state = Arc::new(Mutex::new(state));
 
     let (sender, receiver) = channel();
+    let task_sender = TaskSender::new(sender.clone());
+    let mut task_handler = TaskHandler::new(state.clone(), settings.clone(), receiver);
+
+    // Don't set ctrlc and panic handlers during testing.
+    // This is necessary for multithreaded integration testing, since multiple listener per process
+    // aren't allowed. On top of this, ctrlc also somehow breaks test error output.
+    if !test {
+        setup_signal_panic_handling(&settings, &task_sender)?;
+    }
+
+    std::thread::spawn(move || {
+        task_handler.run();
+    });
+
     // connect with NATS
     let sender_nats = TaskSender::new(sender.clone());
     let state_nats = state.clone();
@@ -88,22 +102,8 @@ pub async fn run(config_path: Option<PathBuf>, profile: Option<String>, test: bo
             Ok::<(), Error>(())
         }
     });
-    // Socket client
-    let sender = TaskSender::new(sender.clone());
-    let mut task_handler = TaskHandler::new(state.clone(), settings.clone(), receiver);
-
-    // Don't set ctrlc and panic handlers during testing.
-    // This is necessary for multithreaded integration testing, since multiple listener per process
-    // aren't allowed. On top of this, ctrlc also somehow breaks test error output.
-    if !test {
-        setup_signal_panic_handling(&settings, &sender)?;
-    }
-
-    std::thread::spawn(move || {
-        task_handler.run();
-    });
-
-    accept_incoming(sender, state.clone(), settings.clone()).await?;
+    // connect with Socket
+    accept_incoming(task_sender, state.clone(), settings.clone()).await?;
 
     Ok(())
 }
