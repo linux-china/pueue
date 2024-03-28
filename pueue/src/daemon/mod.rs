@@ -78,7 +78,18 @@ pub async fn run(config_path: Option<PathBuf>, profile: Option<String>, test: bo
     let state = Arc::new(Mutex::new(state));
 
     let (sender, receiver) = channel();
-    let sender = TaskSender::new(sender);
+    // connect with NATS
+    let sender_nats = TaskSender::new(sender.clone());
+    let state_nats = state.clone();
+    let settings_nats = settings.clone();
+    tokio::task::spawn({
+        async move {
+            network::nats::receive_messages(sender_nats, state_nats, settings_nats).await.unwrap();
+            Ok::<(), Error>(())
+        }
+    });
+    // Socket client
+    let sender = TaskSender::new(sender.clone());
     let mut task_handler = TaskHandler::new(state.clone(), settings.clone(), receiver);
 
     // Don't set ctrlc and panic handlers during testing.
