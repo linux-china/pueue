@@ -15,22 +15,12 @@ use crate::daemon::task_handler::TaskSender;
 pub async fn receive_messages(sender: TaskSender,
                               state: SharedState,
                               settings: Settings) -> anyhow::Result<()> {
-    let worker_id = if let Some(id) = &settings.daemon.worker_id {
-        id.to_string()
-    } else {
-        std::env::var("WORKER_ID").unwrap_or(uuid::Uuid::new_v4().to_string())
-    };
-    let worker_ip_addr = if let Ok(ip) = local_ip_address::local_ip() {
-        ip.to_string()
-    } else {
-        "127.0.0.1".to_owned()
-    };
-    let worker = PueuedWorker::new(&worker_ip_addr, &worker_ip_addr, "UP", &worker_id);
     let nats_host = if let Some(host) = &settings.daemon.nats_host {
         host.clone()
     } else {
         std::env::var("NATS_HOST").unwrap_or("localhost".to_owned())
     };
+    let worker = PueuedWorker::new(&settings, "UP");
     let nc = async_nats::connect(&nats_host).await.unwrap();
     info!("Begin to receive messages from NATS: {}, inbox: {}", nats_host, worker.inbox());
     println!("Begin to receive messages from NATS: {}, inbox: {}", nats_host, worker.inbox());
@@ -125,15 +115,25 @@ pub struct DataCenterInfo {
 }
 
 impl PueuedWorker {
-    pub fn new(host_name: &str, ip_addr: &str, status: &str, worker_uuid: &str) -> Self {
+    pub fn new(settings: &Settings, status: &str) -> Self {
+        let worker_id = if let Some(id) = &settings.daemon.worker_id {
+            id.to_string()
+        } else {
+            std::env::var("WORKER_ID").unwrap_or(uuid::Uuid::new_v4().to_string())
+        };
+        let worker_ip_addr = if let Ok(ip) = local_ip_address::local_ip() {
+            ip.to_string()
+        } else {
+            "127.0.0.1".to_owned()
+        };
         let mut metadata: HashMap<String, String> = HashMap::new();
-        metadata.insert("uuid".to_owned(), worker_uuid.to_string());
-        metadata.insert("inbox".to_owned(), format!("pueued.worker.{}", worker_uuid));
+        metadata.insert("uuid".to_owned(), worker_id.to_string());
+        metadata.insert("inbox".to_owned(), format!("pueued.worker.{}", worker_id));
         PueuedWorker {
-            id: worker_uuid.to_string(),
-            host_name: host_name.to_string(),
+            id: worker_id.to_string(),
+            host_name: worker_ip_addr.to_string(),
             app: "pueued-worker".to_string(),
-            ip_addr: ip_addr.to_string(),
+            ip_addr: worker_ip_addr.to_string(),
             vip_address: None,
             secure_vip_address: None,
             status: status.to_string(),
@@ -145,6 +145,10 @@ impl PueuedWorker {
             data_center_info: None,
             metadata,
         }
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).unwrap()
     }
 
     pub fn inbox(&self) -> String {
@@ -171,8 +175,7 @@ fn adjust_command_path(command_line: &str) -> String {
 }
 
 async fn register_worker(nc: &Client, worker: &PueuedWorker) {
-    let json_text = serde_json::to_vec(&worker).unwrap();
-    nc.publish_with_reply("pueued.registry", worker.inbox(), json_text.into()).await.unwrap();
+    nc.publish_with_reply("pueued.registry", worker.inbox(), worker.to_json().into()).await.unwrap();
 }
 
 #[cfg(test)]
@@ -202,5 +205,6 @@ mod tests {
 }
         "#;
         let add_msg = serde_json::from_str::<AddMessage>(json_text).unwrap();
+        println!("{:?}", add_msg);
     }
 }
