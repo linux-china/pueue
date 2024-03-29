@@ -41,6 +41,7 @@ strum = { workspace = true }
 strum_macros = { workspace = true }
 tokio = { workspace = true }
 lazy_static = "1.4.0"
+nats = "0.24"
 async-nats="0.34"
 futures = "0.3"
 uuid = { version = "1.8.0", features = ["v4"] }
