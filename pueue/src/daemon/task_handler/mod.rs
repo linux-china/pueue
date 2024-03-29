@@ -17,6 +17,7 @@ use pueue_lib::process_helper::*;
 use pueue_lib::settings::Settings;
 use pueue_lib::state::{GroupStatus, SharedState};
 use pueue_lib::task::{Task, TaskResult, TaskStatus};
+use crate::daemon::network::nats::PueuedWorker;
 
 use crate::daemon::pid::cleanup_pid_file;
 use crate::daemon::state_helper::{reset_state, save_state};
@@ -69,8 +70,8 @@ impl TaskSender {
 
     #[inline]
     pub fn send<T>(&self, message: T) -> Result<(), SendError<Message>>
-    where
-        T: Into<Message>,
+        where
+            T: Into<Message>,
     {
         self.sender.send(message.into())
     }
@@ -174,6 +175,14 @@ impl TaskHandler {
     /// If they aren't, we'll wait a little longer.
     /// Once they're, we do some cleanup and exit.
     fn handle_shutdown(&mut self) {
+        // unregister from NATS
+        if let Some(nats_host) = &self.settings.daemon.nats_host {
+            if let Ok(nc) = nats::connect(nats_host) {
+                let worker = PueuedWorker::new(&self.settings, "DOWN");
+                let _ = nc.publish("pueued.registry", worker.to_json());
+                nc.close();
+            }
+        }
         // There are still active tasks. Continue waiting until they're killed and cleaned up.
         if self.children.has_active_tasks() {
             return;
