@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str;
-use async_nats::Client;
+use async_nats::{Client, ConnectOptions};
 use futures::stream::StreamExt;
 use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
@@ -21,7 +21,8 @@ pub async fn receive_messages(sender: TaskSender,
         std::env::var("NATS_HOST").unwrap_or("localhost".to_owned())
     };
     let worker = PueuedWorker::new(&settings, "UP");
-    let nc = async_nats::connect(&nats_host).await.unwrap();
+    let options = ConnectOptions::new().name("pueued-worker");
+    let nc = async_nats::connect_with_options(&nats_host, options).await.unwrap();
     info!("Begin to receive messages from NATS: {}, inbox: {}", nats_host, worker.inbox());
     println!("Begin to receive messages from NATS: {}, inbox: {}", nats_host, worker.inbox());
     // subscribe demo subject
