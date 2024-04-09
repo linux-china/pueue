@@ -11,7 +11,7 @@ homepage = "https://github.com/nukesor/pueue"
 repository = "https://github.com/nukesor/pueue"
 license = "MIT"
 edition = "2021"
-rust-version = "1.67"
+rust-version = "1.77"
 
 [workspace.dependencies]
 chrono = { version = "0.4", features = ["serde"] }
