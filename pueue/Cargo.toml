@@ -40,8 +40,8 @@ strum_macros = { workspace = true }
 tempfile = "3"
 tokio = { workspace = true }
 lazy_static = "1.4.0"
-nats = "0.24"
-async-nats="0.34"
+nats = "0.25"
+async-nats="0.35"
 futures = "0.3"
 uuid = { version = "1.8.0", features = ["v4"] }
 local-ip-address = "0.6"
@@ -57,7 +57,7 @@ better-panic = { workspace = true }
 # nextest run --no-capture`)
 env_logger = "0.11"
 pretty_assertions = { workspace = true }
-rstest = "0.18"
+rstest = "0.19"
 serde_yaml = { workspace = true }
 similar-asserts = "1"
 test-log = "0.2"
