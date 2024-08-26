@@ -2,6 +2,5 @@ pub mod follow_log;
 pub mod message_handler;
 pub mod response_helper;
 pub mod socket;
-pub mod nats;
 
-use super::TaskSender;
+pub mod nats;

@@ -7,17 +7,18 @@ use pueue_lib::network::message::*;
 use pueue_lib::state::{SharedState, State};
 use pueue_lib::task::TaskStatus;
 
-use super::{task_action_response_helper, TaskSender, SENDER_ERR};
+use crate::daemon::process_handler;
+
+use super::task_action_response_helper;
 
 /// This is a small wrapper around the actual in-place task `restart` functionality.
 ///
 /// The "not in-place" restart functionality is actually just a copy the finished task + create a
 /// new task, which is completely handled on the client-side.
 pub fn restart_multiple(
-    message: RestartMessage,
-    sender: &TaskSender,
-    state: &SharedState,
     settings: &Settings,
+    state: &SharedState,
+    message: RestartMessage,
 ) -> Message {
     let task_ids: Vec<usize> = message.tasks.iter().map(|task| task.task_id).collect();
     let mut state = state.lock().unwrap();
@@ -25,24 +26,20 @@ pub fn restart_multiple(
     // We have to compile the response beforehand.
     // Otherwise we no longer know which tasks, were actually capable of being being restarted.
     let response = task_action_response_helper(
-        "Tasks restarted",
+        "Tasks has restarted",
         task_ids.clone(),
         |task| task.is_done(),
         &state,
     );
 
-    // Actually restart all tasks
-    for task in message.tasks.into_iter() {
+    // Restart a tasks in-place
+    for task in message.tasks.iter() {
         restart(&mut state, task, message.stashed, settings);
     }
 
-    // Tell the task manager to start the task immediately if requested.
+    // Actually start the processes if we should do so.
     if message.start_immediately {
-        sender
-            .send(StartMessage {
-                tasks: TaskSelection::TaskIds(task_ids),
-            })
-            .expect(SENDER_ERR);
+        process_handler::start::start(settings, &mut state, TaskSelection::TaskIds(task_ids));
     }
 
     response
@@ -55,7 +52,7 @@ pub fn restart_multiple(
 /// new task, which is completely handled on the client-side.
 fn restart(
     state: &mut MutexGuard<State>,
-    to_restart: TaskToRestart,
+    to_restart: &TaskToRestart,
     stashed: bool,
     settings: &Settings,
 ) {
@@ -72,26 +69,26 @@ fn restart(
     // Either enqueue the task or stash it.
     if stashed {
         task.status = TaskStatus::Stashed { enqueue_at: None };
-        task.enqueued_at = None;
     } else {
-        task.status = TaskStatus::Queued;
-        task.enqueued_at = Some(Local::now());
+        task.status = TaskStatus::Queued {
+            enqueued_at: Local::now(),
+        };
     };
 
     // Update command if applicable.
-    if let Some(new_command) = to_restart.command {
+    if let Some(new_command) = to_restart.command.clone() {
         task.original_command = new_command.clone();
         task.command = insert_alias(settings, new_command);
     }
 
     // Update path if applicable.
-    if let Some(path) = to_restart.path {
+    if let Some(path) = to_restart.path.clone() {
         task.path = path;
     }
 
     // Update path if applicable.
     if to_restart.label.is_some() {
-        task.label = to_restart.label;
+        task.label = to_restart.label.clone();
     } else if to_restart.delete_label {
         task.label = None
     }
@@ -100,8 +97,4 @@ fn restart(
     if let Some(priority) = to_restart.priority {
         task.priority = priority;
     }
-
-    // Reset all variables of any previous run.
-    task.start = None;
-    task.end = None;
 }

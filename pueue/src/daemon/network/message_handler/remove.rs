@@ -7,22 +7,22 @@ use pueue_lib::task::{Task, TaskStatus};
 use super::ok_or_failure_message;
 use crate::daemon::network::response_helper::*;
 use crate::daemon::state_helper::{is_task_removable, save_state};
-use crate::ok_or_return_failure_message;
+use crate::ok_or_save_state_failure;
 
 /// Invoked when calling `pueue remove`.
 /// Remove tasks from the queue.
 /// We have to ensure that those tasks aren't running!
-pub fn remove(task_ids: Vec<usize>, state: &SharedState, settings: &Settings) -> Message {
+pub fn remove(settings: &Settings, state: &SharedState, task_ids: Vec<usize>) -> Message {
     let mut state = state.lock().unwrap();
 
     // Filter all running tasks, since we cannot remove them.
     let filter = |task: &Task| {
         matches!(
             task.status,
-            TaskStatus::Queued
+            TaskStatus::Queued { .. }
                 | TaskStatus::Stashed { .. }
-                | TaskStatus::Done(_)
-                | TaskStatus::Locked
+                | TaskStatus::Done { .. }
+                | TaskStatus::Locked { .. }
         )
     };
     let mut filtered_tasks = state.filter_tasks(filter, Some(task_ids));
@@ -42,7 +42,7 @@ pub fn remove(task_ids: Vec<usize>, state: &SharedState, settings: &Settings) ->
         clean_log_handles(*task_id, &settings.shared.pueue_directory());
     }
 
-    ok_or_return_failure_message!(save_state(&state, settings));
+    ok_or_save_state_failure!(save_state(&state, settings));
 
     compile_task_response("Tasks removed from list", filtered_tasks)
 }
@@ -60,7 +60,7 @@ mod tests {
 
         // 3 and 4 aren't allowed to be removed, since they're running.
         // The rest will succeed.
-        let message = remove(vec![0, 1, 2, 3, 4], &state, &settings);
+        let message = remove(&settings, &state, vec![0, 1, 2, 3, 4]);
 
         // Return message is correct
         assert!(matches!(message, Message::Success(_)));
@@ -82,18 +82,18 @@ mod tests {
         {
             let mut state = state.lock().unwrap();
             // Add a task with a dependency to a finished task
-            let mut task = get_stub_task("5", TaskStatus::Queued);
+            let mut task = get_stub_task("5", StubStatus::Queued);
             task.dependencies = vec![1];
             state.add_task(task);
 
             // Add a task depending on the previous task -> Linked dependencies
-            let mut task = get_stub_task("6", TaskStatus::Queued);
+            let mut task = get_stub_task("6", StubStatus::Queued);
             task.dependencies = vec![5];
             state.add_task(task);
         }
 
         // Make sure we cannot remove a task with dependencies.
-        let message = remove(vec![1], &state, &settings);
+        let message = remove(&settings, &state, vec![1]);
 
         // Return message is correct
         assert!(matches!(message, Message::Failure(_)));
@@ -107,7 +107,7 @@ mod tests {
         }
 
         // Make sure we cannot remove a task with recursive dependencies.
-        let message = remove(vec![1, 5], &state, &settings);
+        let message = remove(&settings, &state, vec![1, 5]);
 
         // Return message is correct
         assert!(matches!(message, Message::Failure(_)));
@@ -121,7 +121,7 @@ mod tests {
         }
 
         // Make sure we can remove tasks with dependencies if all dependencies are specified.
-        let message = remove(vec![1, 5, 6], &state, &settings);
+        let message = remove(&settings, &state, vec![1, 5, 6]);
 
         // Return message is correct
         assert!(matches!(message, Message::Success(_)));

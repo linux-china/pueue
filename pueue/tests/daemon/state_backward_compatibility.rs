@@ -7,8 +7,9 @@ use tempfile::TempDir;
 
 use pueue_lib::settings::Settings;
 
-/// From 0.12.2 on, we aim to have full backward compatibility.
-/// For this reason, an old v0.12.2 serialized state has been checked in.
+/// 4.0.0 introduced numerous breaking changes.
+/// From here on, we now aim to once again have full backward compatibility.
+/// For this reason, an old v4.0.0 serialized state has been checked in.
 ///
 /// We have to be able to restore from that state at all costs.
 /// Everything else results in a breaking change and needs a major version change.
@@ -18,12 +19,12 @@ use pueue_lib::settings::Settings;
 #[test]
 fn test_restore_from_old_state() -> Result<()> {
     better_panic::install();
-    let old_state = include_str!("data/v2.0.0_state.json");
+    let old_state = include_str!("data/v4.0.0_state.json");
 
     let temp_dir = TempDir::new()?;
     let temp_path = temp_dir.path();
 
-    // Open v0.12.2 file and write old state to it.
+    // Open new file and write old state to it.
     let temp_state_path = temp_dir.path().join("state.json");
     let mut file = File::create(temp_state_path)?;
     file.write_all(old_state.as_bytes())?;

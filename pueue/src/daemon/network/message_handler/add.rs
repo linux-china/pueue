@@ -1,22 +1,19 @@
 use chrono::Local;
 use pueue_lib::aliasing::insert_alias;
+use pueue_lib::failure_msg;
 use pueue_lib::network::message::*;
 use pueue_lib::state::{GroupStatus, SharedState};
 use pueue_lib::task::{Task, TaskStatus};
 
 use super::*;
+use crate::daemon::process_handler;
 use crate::daemon::state_helper::save_state;
-use crate::ok_or_return_failure_message;
+use crate::ok_or_save_state_failure;
 
 /// Invoked when calling `pueue add`.
 /// Queues a new task to the state.
 /// If the start_immediately flag is set, send a StartMessage to the task handler.
-pub fn add_task(
-    message: AddMessage,
-    sender: &TaskSender,
-    state: &SharedState,
-    settings: &Settings,
-) -> Message {
+pub fn add_task(settings: &Settings, state: &SharedState, message: AddMessage) -> Message {
     let mut state = state.lock().unwrap();
     if let Err(message) = ensure_group_exists(&mut state, &message.group) {
         return message;
@@ -29,9 +26,7 @@ pub fn add_task(
         .filter(|id| !state.tasks.contains_key(id))
         .collect();
     if !not_found.is_empty() {
-        return create_failure_message(format!(
-            "Unable to setup dependencies : task(s) {not_found:?} not found",
-        ));
+        return failure_msg!("Unable to setup dependencies : task(s) {not_found:?} not found",);
     }
 
     // Create a new task and add it to the state.
@@ -40,20 +35,19 @@ pub fn add_task(
         message.path,
         message.envs,
         message.group,
-        TaskStatus::Locked,
+        TaskStatus::Queued {
+            enqueued_at: Local::now(),
+        },
         message.dependencies,
         message.priority.unwrap_or(0),
         message.label,
     );
 
-    // Set the starting status.
+    // Handle if the command is to be stashed and/or automatically enqueued later.
     if message.stashed || message.enqueue_at.is_some() {
         task.status = TaskStatus::Stashed {
             enqueue_at: message.enqueue_at,
         };
-    } else {
-        task.status = TaskStatus::Queued;
-        task.enqueued_at = Some(Local::now());
     }
 
     // Check if there're any aliases that should be applied.
@@ -78,22 +72,18 @@ pub fn add_task(
 
     // Add the task and persist the state.
     let task_id = state.add_task(task);
-    ok_or_return_failure_message!(save_state(&state, settings));
+    ok_or_save_state_failure!(save_state(&state, settings));
 
     // Notify the task handler, in case the client wants to start the task immediately.
     if message.start_immediately {
-        sender
-            .send(StartMessage {
-                tasks: TaskSelection::TaskIds(vec![task_id]),
-            })
-            .expect(SENDER_ERR);
+        process_handler::start::start(settings, &mut state, TaskSelection::TaskIds(vec![task_id]));
     }
 
     // Create the customized response for the client.
     let mut response = if message.print_task_id {
         task_id.to_string()
     } else if let Some(enqueue_at) = message.enqueue_at {
-        let enqueue_at = enqueue_at.format("%Y-%m-%d %H:%M:%S");
+        let enqueue_at = format_datetime(settings, &enqueue_at);
         format!("New task added (id {task_id}). It will be enqueued at {enqueue_at}")
     } else {
         format!("New task added (id {task_id}).")

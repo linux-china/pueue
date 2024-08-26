@@ -1,3 +1,4 @@
+use pueue_lib::failure_msg;
 use pueue_lib::network::message::*;
 use pueue_lib::settings::Settings;
 use pueue_lib::state::SharedState;
@@ -5,24 +6,29 @@ use pueue_lib::task::TaskStatus;
 
 use super::ok_or_failure_message;
 use crate::daemon::state_helper::save_state;
-use crate::ok_or_return_failure_message;
+use crate::ok_or_save_state_failure;
 
 /// Invoked when calling `pueue switch`.
 /// Switch the position of two tasks in the upcoming queue.
 /// We have to ensure that those tasks are either `Queued` or `Stashed`
-pub fn switch(message: SwitchMessage, state: &SharedState, settings: &Settings) -> Message {
+pub fn switch(settings: &Settings, state: &SharedState, message: SwitchMessage) -> Message {
     let mut state = state.lock().unwrap();
 
     let task_ids = [message.task_id_1, message.task_id_2];
     let filtered_tasks = state.filter_tasks(
-        |task| matches!(task.status, TaskStatus::Queued | TaskStatus::Stashed { .. }),
+        |task| {
+            matches!(
+                task.status,
+                TaskStatus::Queued { .. } | TaskStatus::Stashed { .. }
+            )
+        },
         Some(task_ids.to_vec()),
     );
     if !filtered_tasks.non_matching_ids.is_empty() {
-        return create_failure_message("Tasks have to be either queued or stashed.");
+        return failure_msg!("Tasks have to be either queued or stashed.");
     }
     if task_ids[0] == task_ids[1] {
-        return create_failure_message("You cannot switch a task with itself.");
+        return failure_msg!("You cannot switch a task with itself.");
     }
 
     // Get the tasks. Expect them to be there, since we found no mismatch
@@ -55,7 +61,7 @@ pub fn switch(message: SwitchMessage, state: &SharedState, settings: &Settings) 
         }
     }
 
-    ok_or_return_failure_message!(save_state(&state, settings));
+    ok_or_save_state_failure!(save_state(&state, settings));
     create_success_message("Tasks have been switched")
 }
 
@@ -79,27 +85,27 @@ mod tests {
 
         {
             let mut state = state.lock().unwrap();
-            let task = get_stub_task("0", TaskStatus::Queued);
+            let task = get_stub_task("0", StubStatus::Queued);
             state.add_task(task);
 
-            let task = get_stub_task("1", TaskStatus::Stashed { enqueue_at: None });
+            let task = get_stub_task("1", StubStatus::Stashed { enqueue_at: None });
             state.add_task(task);
 
-            let task = get_stub_task("2", TaskStatus::Queued);
+            let task = get_stub_task("2", StubStatus::Queued);
             state.add_task(task);
 
-            let task = get_stub_task("3", TaskStatus::Stashed { enqueue_at: None });
+            let task = get_stub_task("3", StubStatus::Stashed { enqueue_at: None });
             state.add_task(task);
 
-            let mut task = get_stub_task("4", TaskStatus::Queued);
+            let mut task = get_stub_task("4", StubStatus::Queued);
             task.dependencies = vec![0, 3];
             state.add_task(task);
 
-            let mut task = get_stub_task("5", TaskStatus::Stashed { enqueue_at: None });
+            let mut task = get_stub_task("5", StubStatus::Stashed { enqueue_at: None });
             task.dependencies = vec![1];
             state.add_task(task);
 
-            let mut task = get_stub_task("6", TaskStatus::Queued);
+            let mut task = get_stub_task("6", StubStatus::Queued);
             task.dependencies = vec![2, 3];
             state.add_task(task);
         }
@@ -112,7 +118,7 @@ mod tests {
     fn switch_normal() {
         let (state, settings, _tempdir) = get_test_state();
 
-        let message = switch(get_message(1, 2), &state, &settings);
+        let message = switch(&settings, &state, get_message(1, 2));
 
         // Return message is correct
         assert!(matches!(message, Message::Success(_)));
@@ -130,7 +136,7 @@ mod tests {
     fn switch_task_with_itself() {
         let (state, settings, _tempdir) = get_test_state();
 
-        let message = switch(get_message(1, 1), &state, &settings);
+        let message = switch(&settings, &state, get_message(1, 1));
 
         // Return message is correct
         assert!(matches!(message, Message::Failure(_)));
@@ -145,7 +151,7 @@ mod tests {
     fn switch_task_with_dependant() {
         let (state, settings, _tempdir) = get_test_state();
 
-        switch(get_message(0, 3), &state, &settings);
+        switch(&settings, &state, get_message(0, 3));
 
         let state = state.lock().unwrap();
         assert_eq!(state.tasks.get(&4).unwrap().dependencies, vec![0, 3]);
@@ -157,7 +163,7 @@ mod tests {
     fn switch_double_dependency() {
         let (state, settings, _tempdir) = get_test_state();
 
-        switch(get_message(1, 2), &state, &settings);
+        switch(&settings, &state, get_message(1, 2));
 
         let state = state.lock().unwrap();
         assert_eq!(state.tasks.get(&5).unwrap().dependencies, vec![2]);
@@ -182,7 +188,7 @@ mod tests {
         ];
 
         for ids in combinations {
-            let message = switch(get_message(ids.0, ids.1), &state, &settings);
+            let message = switch(&settings, &state, get_message(ids.0, ids.1));
 
             // Assert, that we get a Failure message with the correct text.
             assert!(matches!(message, Message::Failure(_)));

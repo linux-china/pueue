@@ -21,6 +21,22 @@ macro_rules! impl_into_message {
     };
 }
 
+/// Macro to simplify creating success_messages
+#[macro_export]
+macro_rules! success_msg {
+    ($($arg:tt)*) => {{
+        create_success_message(format!($($arg)*))
+    }}
+}
+
+/// Macro to simplify creating failure_messages
+#[macro_export]
+macro_rules! failure_msg {
+    ($($arg:tt)*) => {{
+        create_failure_message(format!($($arg)*))
+    }}
+}
+
 /// This is the main message enum. \
 /// Everything that's send between the daemon and a client can be represented by this enum.
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
@@ -28,7 +44,7 @@ pub enum Message {
     Add(AddMessage),
     Remove(Vec<usize>),
     Switch(SwitchMessage),
-    Stash(Vec<usize>),
+    Stash(StashMessage),
     Enqueue(EnqueueMessage),
 
     Start(StartMessage),
@@ -134,8 +150,16 @@ pub struct SwitchMessage {
 impl_into_message!(SwitchMessage, Message::Switch);
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+pub struct StashMessage {
+    pub tasks: TaskSelection,
+    pub enqueue_at: Option<DateTime<Local>>,
+}
+
+impl_into_message!(StashMessage, Message::Stash);
+
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 pub struct EnqueueMessage {
-    pub task_ids: Vec<usize>,
+    pub tasks: TaskSelection,
     pub enqueue_at: Option<DateTime<Local>>,
 }
 
@@ -264,16 +288,24 @@ pub struct GroupResponseMessage {
 impl_into_message!(GroupResponseMessage, Message::GroupResponse);
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
-pub struct ResetMessage {}
+pub enum ResetTarget {
+    // Reset all groups
+    All,
+    // Reset a list of specific groups
+    Groups(Vec<String>),
+}
+
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+pub struct ResetMessage {
+    pub target: ResetTarget,
+}
 
 impl_into_message!(ResetMessage, Message::Reset);
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 pub struct CleanMessage {
-    #[serde(default = "bool::default")]
     pub successful_only: bool,
 
-    #[serde(default = "Option::default")]
     pub group: Option<String>,
 }
 
@@ -300,12 +332,12 @@ impl_into_message!(StreamRequestMessage, Message::StreamRequest);
 
 /// Request logs for specific tasks.
 ///
-/// `task_ids` specifies the requested tasks. If none are given, all tasks are selected.
+/// `tasks` specifies the requested tasks.
 /// `send_logs` Determines whether logs should be sent at all.
 /// `lines` Determines whether only a few lines of log should be returned.
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 pub struct LogRequestMessage {
-    pub task_ids: Vec<usize>,
+    pub tasks: TaskSelection,
     pub send_logs: bool,
     pub lines: Option<usize>,
 }
@@ -316,7 +348,6 @@ impl_into_message!(LogRequestMessage, Message::Log);
 #[derive(PartialEq, Eq, Clone, Deserialize, Serialize)]
 pub struct TaskLogMessage {
     pub task: Task,
-    #[serde(default = "bool::default")]
     /// Indicates whether the log output has been truncated or not.
     pub output_complete: bool,
     pub output: Option<Vec<u8>>,

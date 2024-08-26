@@ -9,11 +9,9 @@ use pueue_lib::network::message::{AddMessage, Message};
 use pueue_lib::settings::Settings;
 use pueue_lib::state::SharedState;
 use crate::daemon::network::message_handler::handle_message;
-use crate::daemon::task_handler::TaskSender;
 
 
-pub async fn receive_messages(sender: TaskSender,
-                              state: SharedState,
+pub async fn receive_messages(state: SharedState,
                               settings: Settings) -> anyhow::Result<()> {
     let nats_host = if let Some(host) = &settings.daemon.nats_host {
         host.clone()
@@ -57,7 +55,7 @@ pub async fn receive_messages(sender: TaskSender,
                             label: origin_msg.label,
                             print_task_id: false,
                         };
-                        let _ = handle_message(Message::Add(add_msg), &sender, &state, &settings);
+                        let _ = handle_message(Message::Add(add_msg), &state, &settings);
                     } else {
                         error!("pueue-001201: Invalid message format: {}", message);
                     }
@@ -75,7 +73,7 @@ pub async fn receive_messages(sender: TaskSender,
                         label: None,
                         print_task_id: false,
                     };
-                    let _ = handle_message(Message::Add(add_msg), &sender, &state, &settings);
+                    let _ = handle_message(Message::Add(add_msg), &state, &settings);
                 }
             }
             Ok::<(), async_nats::Error>(())

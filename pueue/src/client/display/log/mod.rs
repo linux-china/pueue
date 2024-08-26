@@ -3,12 +3,13 @@ use std::collections::BTreeMap;
 use comfy_table::{Attribute as ComfyAttribute, Cell, CellAlignment, Table};
 use crossterm::style::Color;
 
-use pueue_lib::network::message::TaskLogMessage;
+use pueue_lib::network::message::{TaskLogMessage, TaskSelection};
 use pueue_lib::settings::Settings;
 use pueue_lib::task::{Task, TaskResult, TaskStatus};
 
 use super::OutputStyle;
 use crate::client::cli::SubCommand;
+use crate::client::client::selection_from_params;
 
 mod json;
 mod local;
@@ -52,8 +53,10 @@ pub fn print_logs(
     let SubCommand::Log {
         json,
         task_ids,
+        group,
         lines,
         full,
+        all,
     } = cli_command
     else {
         panic!("Got wrong Subcommand {cli_command:?} in print_log. This shouldn't happen");
@@ -67,15 +70,22 @@ pub fn print_logs(
         return;
     }
 
-    // Check some early return conditions
-    if task_ids.is_empty() && task_logs.is_empty() {
-        println!("There are no finished tasks");
-        return;
-    }
-
-    if !task_ids.is_empty() && task_logs.is_empty() {
-        println!("There are no finished tasks for your specified ids");
-        return;
+    let selection = selection_from_params(*all, group, task_ids);
+    if task_logs.is_empty() {
+        match selection {
+            TaskSelection::TaskIds(_) => {
+                println!("There are no finished tasks for your specified ids");
+                return;
+            }
+            TaskSelection::Group(group) => {
+                println!("There are no finished tasks for group '{group}'");
+                return;
+            }
+            TaskSelection::All => {
+                println!("There are no finished tasks");
+                return;
+            }
+        }
     }
 
     // Iterate over each task and print the respective log.
@@ -87,7 +97,7 @@ pub fn print_logs(
         if let Some((_, task_log)) = task_iter.peek() {
             if matches!(
                 &task_log.task.status,
-                TaskStatus::Done(_) | TaskStatus::Running | TaskStatus::Paused,
+                TaskStatus::Done { .. } | TaskStatus::Running { .. } | TaskStatus::Paused { .. }
             ) {
                 println!();
             }
@@ -112,7 +122,7 @@ fn print_log(
     // We only show logs of finished or running tasks.
     if !matches!(
         task.status,
-        TaskStatus::Done(_) | TaskStatus::Running | TaskStatus::Paused
+        TaskStatus::Done { .. } | TaskStatus::Running { .. } | TaskStatus::Paused { .. }
     ) {
         return;
     }
@@ -138,9 +148,9 @@ fn print_task_info(task: &Task, style: &OutputStyle) {
     );
 
     let (exit_status, color) = match &task.status {
-        TaskStatus::Paused => ("paused".into(), Color::White),
-        TaskStatus::Running => ("running".into(), Color::Yellow),
-        TaskStatus::Done(result) => match result {
+        TaskStatus::Paused { .. } => ("paused".into(), Color::White),
+        TaskStatus::Running { .. } => ("running".into(), Color::Yellow),
+        TaskStatus::Done { result, .. } => match result {
             TaskResult::Success => ("completed successfully".into(), Color::Green),
             TaskResult::Failed(exit_code) => {
                 (format!("failed with exit code {exit_code}"), Color::Red)
@@ -187,14 +197,16 @@ fn print_task_info(task: &Task, style: &OutputStyle) {
         ]);
     }
 
+    let (start, end) = task.start_and_end();
+
     // Start and end time
-    if let Some(start) = task.start {
+    if let Some(start) = start {
         table.add_row(vec![
             style.styled_cell("Start:", None, Some(ComfyAttribute::Bold)),
             Cell::new(start.to_rfc2822()),
         ]);
     }
-    if let Some(end) = task.end {
+    if let Some(end) = end {
         table.add_row(vec![
             style.styled_cell("End:", None, Some(ComfyAttribute::Bold)),
             Cell::new(end.to_rfc2822()),
