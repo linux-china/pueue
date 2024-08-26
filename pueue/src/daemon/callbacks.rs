@@ -63,6 +63,9 @@ pub fn build_callback_command(
     parameters.insert("command", task.command.clone());
     parameters.insert("path", (*task.path.to_string_lossy()).to_owned());
     parameters.insert("group", task.group.clone());
+    if let Some(label) = &task.label {
+        parameters.insert("label", label.clone());
+    }
 
     // Result takes the TaskResult Enum strings, unless it didn't finish yet.
     if let TaskStatus::Done { result, .. } = &task.status {
