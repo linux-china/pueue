@@ -125,3 +125,7 @@ callback的命令行程序要包含以下功能：
 * 上传文件到OSS：通过环境变量
 * 调用NATS publish
 
+
+# References
+
+* aria2: https://aria2.github.io/
