@@ -113,6 +113,14 @@ nats publish "pueued.worker.worker1" "java --version"
 
 请参考[callbacks.rs](pueue/src/daemon/callbacks.rs)的实现，添加对应的回调功能。
 
+# Ops功能
+
+你可以向pueued发现相关的指令，进行对应的Ops操作，典型的如下：
+
+- 删除任务: `remove task_id`
+
+这里的command要和pueue的sub command一致。
+
 # 客户端访问
 
 如果你需要使用pueue控制多个客户端，可以考虑创建多个配置项，然后连接到不同的pueued服务器上。
