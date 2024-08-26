@@ -49,7 +49,7 @@ impl<'a> TableBuilder<'a> {
             priority: false,
             enqueue_at: false,
             dependencies: false,
-            label: false,
+            label: true,
             command: true,
             path: true,
             start: true,
