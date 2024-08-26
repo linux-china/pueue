@@ -44,7 +44,7 @@ Pueue和NATS对接：
 }
 ```
 
-* pueued关闭：则会向`pueued.registry`发现status为`DOWN`的消息。 
+* pueued关闭：则会向`pueued.registry`发现status为`DOWN`的消息。
 * 屏蔽某一pueued: 将其状态设置为`DOWN`，然后不要给其在发送消息
 
 启动流程如下：
@@ -83,30 +83,31 @@ Pueue和NATS对接：
 
 * label: 可以设置为调度平台的任务id
 * envs: 环境变量，如果设置KMS，需要设置`MJ_KMS_TOKEN`
-* enqueue_at: 设置任务的执行时间，可以设置为RFC3339格式，如`"2024-03-22T20:08:40+08:00"`，请注意添加时区。对应的命令如： `pueue add -d "2024-03-28T19:15:00" "java --version"`
-
+* enqueue_at: 设置任务的执行时间，可以设置为RFC3339格式，如`"2024-03-22T20:08:40+08:00"`，请注意添加时区。对应的命令如：
+  `pueue add -d "2024-03-28T19:15:00" "java --version"`
 
 nats publish "pueued.worker.worker1" "java --version"
+
 # 回调
 
 当任务执行完毕后，需要回调任务调度，要告知相关的信息.
 
-* 日志OSS上上传： 文件命名规范为： 日志文件：`namespace/date/task_label.log`,  状态：`namespace/date/task_label.json`
+* 日志OSS上上传： 文件命名规范为： 日志文件：`namespace/date/task_label.log`, 状态：`namespace/date/task_label.json`
 * 发送NATS消息： subject: `pueued.tasks.callback`, message为json
 
 ```json
 {
-   "id":1,
-   "command": "java --version",
-   "result": "Success",
-   "exit_code": 1,
-   "group": "default",
-   "label": "xxxx",
-   "start": 1234234,
-   "end": 234234234,
-   "output": "10 lines",
-   "log_path": "s3://bucket/namespace/2024-03-02/task-label.log",
-   "log_size": 11234234
+  "id": 1,
+  "command": "java --version",
+  "result": "Success",
+  "exit_code": 1,
+  "group": "default",
+  "label": "xxxx",
+  "start": 1234234,
+  "end": 234234234,
+  "output": "10 lines",
+  "log_path": "s3://bucket/namespace/2024-03-02/task-label.log",
+  "log_size": 11234234
 }
 ```
 
@@ -114,7 +115,7 @@ nats publish "pueued.worker.worker1" "java --version"
 
 # 客户端访问
 
-如果你需要使用pueue控制多个客户端，可以考虑创建多个配置项，然后连接到不同的pueued服务器上。 
+如果你需要使用pueue控制多个客户端，可以考虑创建多个配置项，然后连接到不同的pueued服务器上。
 然后创建对应的alias，如`pueue-a`, `pueue-b`，链接到不同的服务器上。
 
 详细请参考： https://github.com/Nukesor/pueue/wiki/Configuration
@@ -124,3 +125,4 @@ callback的命令行程序要包含以下功能：
 * 上传文件到OSS：通过环境变量
 * 调用NATS publish
 
+请参考[callbacks.rs](pueue/src/daemon/callbacks.rs)的实现，添加对应的回调功能。
