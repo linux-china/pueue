@@ -111,7 +111,7 @@ nats publish "pueued.worker.worker1" "java --version"
 }
 ```
 
-每天可以考虑将相关的状态信息形成一个大的csv文件，保存下来。
+请参考[callbacks.rs](pueue/src/daemon/callbacks.rs)的实现，添加对应的回调功能。
 
 # 客户端访问
 
@@ -125,4 +125,3 @@ callback的命令行程序要包含以下功能：
 * 上传文件到OSS：通过环境变量
 * 调用NATS publish
 
-请参考[callbacks.rs](pueue/src/daemon/callbacks.rs)的实现，添加对应的回调功能。
