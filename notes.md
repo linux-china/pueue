@@ -44,7 +44,8 @@ Pueue和NATS对接：
 }
 ```
 
-* pueued关闭：则会向`pueued.registry`发现status为`DOWN`的消息。
+* pueued关闭：则会向`pueued.registry`发现status为`DOWN`的消息。 
+* 屏蔽某一pueued: 将其状态设置为`DOWN`，然后不要给其在发送消息
 
 启动流程如下：
 
