@@ -32,10 +32,15 @@ pub async fn receive_messages(state: SharedState,
             while let Some(msg) = subscriber.next().await {
                 let payload = String::from_utf8(msg.payload.to_vec()).unwrap();
                 let message = payload.trim();
-                if message == "pong" {
+                if message == "pong" { // response from scheduler
                     info!("pueue-001200: Pueue worker registered successfully!");
                     println!("pueue-001200: Pueue worker registered successfully!");
-                } else if message.starts_with("{") { // json message
+                } else if message.starts_with("remove ") { // remove message
+                    if let Ok(task_id) =  message[7..].trim().parse::<usize>() {
+                        handle_message(Message::Remove(vec![task_id]), &state, &settings);
+                    }
+                }
+                else if message.starts_with("{") { // json message
                     if let Ok(origin_msg) = serde_json::from_str::<AddMessage>(&message) {
                         let group = if origin_msg.group.is_empty() {
                             "default".to_owned()
@@ -156,7 +161,7 @@ impl PueuedWorker {
 }
 
 fn adjust_command_path(command_line: &str) -> String {
-    return if command_line.contains("/") {
+    if command_line.contains("/") {
         command_line.to_owned()
     } else {
         let offset = command_line.find(" ").unwrap_or(0);
@@ -170,7 +175,7 @@ fn adjust_command_path(command_line: &str) -> String {
         } else {
             command_line.to_owned()
         }
-    };
+    }
 }
 
 async fn register_worker(nc: &Client, worker: &PueuedWorker) {
