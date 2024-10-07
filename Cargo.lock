@@ -973,9 +973,9 @@ checksum = "1b43ede17f21864e81be2fa654110bf1e793774238d86ef8555c37e6519c0403"
 
 [[package]]
 name = "handlebars"
-version = "5.1.2"
+version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d08485b96a0e6393e9e4d1b8d48cf74ad6c063cd905eb33f42c1ce3f0377539b"
+checksum = "ce25b617d1375ef96eeb920ae717e3da34a02fc979fe632c75128350f9e1f74a"
 dependencies = [
  "log",
  "pest",
@@ -1153,7 +1153,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -1705,7 +1705,19 @@ dependencies = [
  "bitflags 2.5.0",
  "hex",
  "lazy_static",
- "procfs-core",
+ "procfs-core 0.16.0",
+ "rustix",
+]
+
+[[package]]
+name = "procfs"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc5b72d8145275d844d4b5f6d4e1eef00c8cd889edb6035c21675d1bb1f45c9f"
+dependencies = [
+ "bitflags 2.5.0",
+ "hex",
+ "procfs-core 0.17.0",
  "rustix",
 ]
 
@@ -1714,6 +1726,16 @@ name = "procfs-core"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d3554923a69f4ce04c4a754260c338f505ce22642d3830e049a399fc2059a29"
+dependencies = [
+ "bitflags 2.5.0",
+ "hex",
+]
+
+[[package]]
+name = "procfs-core"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "239df02d8349b06fc07398a3a1697b06418223b1c7725085e801e7c0fc6a12ec"
 dependencies = [
  "bitflags 2.5.0",
  "hex",
@@ -1747,7 +1769,7 @@ dependencies = [
  "pest",
  "pest_derive",
  "pretty_assertions",
- "procfs",
+ "procfs 0.16.0",
  "pueue-lib",
  "rstest",
  "serde",
@@ -1786,7 +1808,7 @@ dependencies = [
  "log",
  "portpicker",
  "pretty_assertions",
- "procfs",
+ "procfs 0.17.0",
  "rand",
  "rcgen",
  "rev_buf_reader",
