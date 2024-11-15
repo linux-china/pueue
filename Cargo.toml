@@ -25,7 +25,7 @@ serde_yaml = "0.9"
 snap = "1.1"
 strum = { version = "0.26", features = ["derive"] }
 tokio = { version = "1.36", features = ["rt-multi-thread", "time", "io-std"] }
-handlebars = "5.1"
+handlebars = "6.2"
 anyhow = "1"
 better-panic = "0.3"
 pretty_assertions = "1"

@@ -72,4 +72,4 @@ libproc = "0.14.6"
 
 # Linux only
 [target.'cfg(target_os = "linux")'.dependencies]
-procfs = { version = "0.16", default-features = false }
+procfs = { version = "0.17", default-features = false }
