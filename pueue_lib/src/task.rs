@@ -1,8 +1,8 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use chrono::prelude::*;
-use serde_derive::{Deserialize, Serialize};
-use strum_macros::Display;
+use serde::{Deserialize, Serialize};
+use strum::Display;
 
 use crate::state::PUEUE_DEFAULT_GROUP;
 
