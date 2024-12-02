@@ -1,6 +1,6 @@
 [package]
 name = "pueue"
-version = "3.4.1"
+version = "4.0.0-rc.1"
 description = "A cli tool for managing long running shell commands."
 keywords = ["shell", "command", "parallel", "task", "queue"]
 readme = "../README.md"
@@ -28,7 +28,7 @@ interim = { version = "0.1.2", features = ["chrono"] }
 log.workspace = true
 pest = "2.7"
 pest_derive = "2.7"
-pueue-lib = { version = "0.26.1", path = "../pueue_lib" }
+pueue-lib = { version = "0.27.0", path = "../pueue_lib" }
 serde.workspace = true
 serde_json.workspace = true
 shell-escape = "0.1"
@@ -38,9 +38,9 @@ strum.workspace = true
 tempfile = "3"
 tokio = { workspace = true }
 lazy_static = "1.5.0"
-serde_derive="1"
+serde_derive = "1"
 nats = "0.25"
-async-nats = "0.37"
+async-nats = "0.38"
 futures = "0.3"
 uuid = { version = "1.10.0", features = ["v4"] }
 local-ip-address = "0.6"

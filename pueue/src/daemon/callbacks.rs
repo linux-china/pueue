@@ -21,7 +21,7 @@ pub fn spawn_callback(settings: &Settings, state: &mut LockedState, task: &Task)
     };
 
     // Build the command to be called from the template string in the configuration file.
-    let callback_command = match build_callback_command(settings, task, template_string) {
+    let callback_command = match build_callback_command(settings, state, task, template_string) {
         Ok(callback_command) => callback_command,
         Err(err) => {
             error!("Failed to create callback command from template with error: {err}");
@@ -49,6 +49,7 @@ pub fn spawn_callback(settings: &Settings, state: &mut LockedState, task: &Task)
 /// finished task.
 pub fn build_callback_command(
     settings: &Settings,
+    state: &mut LockedState,
     task: &Task,
     template_string: &str,
 ) -> Result<String, RenderError> {
@@ -62,10 +63,23 @@ pub fn build_callback_command(
     parameters.insert("id", task.id.to_string());
     parameters.insert("command", task.command.clone());
     parameters.insert("path", (*task.path.to_string_lossy()).to_owned());
+
+    // Add group information to template
+    // This includes how many stashed and queued tasks are left in the group.
     parameters.insert("group", task.group.clone());
     if let Some(label) = &task.label {
         parameters.insert("label", label.clone());
     }
+    let queued_tasks = state
+        .filter_tasks_of_group(|task| task.is_queued(), &task.group)
+        .matching_ids
+        .len();
+    parameters.insert("queued_count", queued_tasks.to_string());
+    let stashed_tasks = state
+        .filter_tasks_of_group(|task| task.is_stashed(), &task.group)
+        .matching_ids
+        .len();
+    parameters.insert("stashed_count", stashed_tasks.to_string());
 
     // Result takes the TaskResult Enum strings, unless it didn't finish yet.
     if let TaskStatus::Done { result, .. } = &task.status {
@@ -135,6 +149,8 @@ pub fn check_callbacks(state: &mut LockedState) {
 
     finished.reverse();
     for id in finished.iter() {
+        // Explicitly allow this lint since we did a try_wait above and know that it finished.
+        #[allow(clippy::zombie_processes)]
         state.callbacks.remove(*id);
     }
 }
