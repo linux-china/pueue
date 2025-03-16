@@ -24,3 +24,6 @@ perf.data
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# IDE
+.idea/
