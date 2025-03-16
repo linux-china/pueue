@@ -1,4 +1,3 @@
-use futures::stream;
 use pueue_lib::{
     Settings, failure_msg,
     message::*,
