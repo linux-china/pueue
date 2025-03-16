@@ -1,12 +1,14 @@
-use std::fs::{remove_file, File};
-use std::io::{self, prelude::*, Read, SeekFrom};
-use std::path::{Path, PathBuf};
+//! Helper classes to read and write log files of Pueue's tasks.
+use std::{
+    fs::{File, remove_file},
+    io::{self, Read, SeekFrom, prelude::*},
+    path::{Path, PathBuf},
+};
 
-use log::error;
 use rev_buf_reader::RevBufReader;
 use snap::write::FrameEncoder;
 
-use crate::error::Error;
+use crate::{error::Error, internal_prelude::*};
 
 /// Get the path to the log file of a task.
 pub fn get_log_path(task_id: usize, pueue_dir: &Path) -> PathBuf {
@@ -61,8 +63,8 @@ pub fn clean_log_handles(task_id: usize, pueue_dir: &Path) {
 /// Task output is compressed using [snap] to save some memory and bandwidth.
 /// Return type is `(Vec<u8>, bool)`
 /// - `Vec<u8>` the compressed task output.
-/// - `bool` Whether the full task's output has been read.
-///     `false` indicate that the log output has been truncated
+/// - `bool` Whether the full task's output has been read. `false` indicate that the log output has
+///   been truncated.
 pub fn read_and_compress_log_file(
     task_id: usize,
     pueue_dir: &Path,
@@ -73,14 +75,16 @@ pub fn read_and_compress_log_file(
     let mut content = Vec::new();
 
     // Indicates whether the full log output is shown or just the last part of it.
+    // This may be true even if, for example, only the last 15 lines were requested
+    // but the log is only 10 lines long.
     let mut output_complete = true;
 
-    // Move the cursor to the last few lines of both files.
+    // If requested, move the cursor to the last few lines of the file.
     if let Some(lines) = lines {
         output_complete = seek_to_last_lines(&mut file, lines)?;
     }
 
-    // Compress the full log input and pipe it into the snappy compressor
+    // Pipe the remaining log output file it into the snappy compressor
     {
         let mut compressor = FrameEncoder::new(&mut content);
         io::copy(&mut file, &mut compressor)
@@ -123,8 +127,8 @@ pub fn read_last_lines(file: &mut File, amount: usize) -> String {
     lines.into_iter().rev().collect::<Vec<String>>().join("\n")
 }
 
-/// Seek the cursor of the current file to the beginning of the line that's located `amount` newlines
-/// from the back of the file.
+/// Seek the cursor of the current file to the beginning of the line that's located `amount`
+/// newlines from the back of the file.
 ///
 /// The `bool` return value indicates whether we sought to the start of the file (there were less
 /// lines than the limit). `true` means that the handle is now at the very start of the file.
@@ -157,8 +161,8 @@ pub fn seek_to_last_lines(file: &mut File, amount: usize) -> Result<bool, Error>
         }
 
         // Check each byte for a newline.
-        // Even though the RevBufReader reads from behind, the bytes in the buffer are still in forward
-        // order. Since we want to scan from the back, we have to reverse the buffer
+        // Even though the RevBufReader reads from behind, the bytes in the buffer are still in
+        // forward order. Since we want to scan from the back, we have to reverse the buffer
         for byte in buffer[0..read_bytes].iter().rev() {
             total_read_bytes += 1;
             if *byte != b'\n' {

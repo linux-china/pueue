@@ -1,12 +1,8 @@
-use anyhow::{Context, Result};
 use chrono::{DateTime, Local, TimeDelta};
-use pueue_lib::state::GroupStatus;
+use pueue_lib::{GroupStatus, message::*, task::*};
 use rstest::rstest;
 
-use pueue_lib::network::message::*;
-use pueue_lib::task::*;
-
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// Tasks can be stashed and scheduled for being enqueued at a specific point in time.
 ///
@@ -35,16 +31,16 @@ async fn test_enqueued_tasks(#[case] enqueue_at: Option<DateTime<Local>>) -> Res
     }
 
     // Manually enqueue the task
-    let enqueue_message = EnqueueMessage {
+    let enqueue_message = EnqueueRequest {
         tasks: TaskSelection::TaskIds(vec![0]),
         enqueue_at: None,
     };
-    send_message(shared, enqueue_message)
+    send_request(shared, enqueue_message)
         .await
         .context("Failed to to add task message")?;
 
     // Make sure the task is started after being enqueued
-    wait_for_task_condition(shared, 0, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 0, Task::is_running).await?;
 
     Ok(())
 }
@@ -64,12 +60,17 @@ async fn test_delayed_tasks() -> Result<()> {
     .await?;
     assert_success(response);
 
-    // The task should be added in stashed state for about 1 second.
-    wait_for_task_condition(shared, 0, |task| task.is_stashed()).await?;
+    assert_task_condition(
+        shared,
+        0,
+        Task::is_stashed,
+        "Task should be stashed for about 1 second.",
+    )
+    .await?;
 
     // Make sure the task is started after being automatically enqueued.
     sleep_ms(800).await;
-    wait_for_task_condition(shared, 0, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 0, Task::is_running).await?;
 
     Ok(())
 }
@@ -88,18 +89,17 @@ async fn test_stash_queued_task() -> Result<()> {
     add_task(shared, "sleep 10").await?;
 
     // Stash the task
-    send_message(
+    send_request(
         shared,
-        StashMessage {
+        StashRequest {
             tasks: TaskSelection::TaskIds(vec![0]),
             enqueue_at: None,
         },
     )
     .await
-    .context("Failed to send STash message")?;
+    .context("Failed to send Stash message")?;
 
-    let task = get_task(shared, 0).await?;
-    assert_eq!(task.status, TaskStatus::Stashed { enqueue_at: None });
+    assert_task_condition(shared, 0, Task::is_stashed, "Task has just been stashed.").await?;
 
     Ok(())
 }

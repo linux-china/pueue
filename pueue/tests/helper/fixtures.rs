@@ -1,18 +1,20 @@
-use std::collections::HashMap;
-use std::env::temp_dir;
-use std::fs::{canonicalize, File};
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::{
+    collections::HashMap,
+    env::temp_dir,
+    fs::{File, canonicalize},
+    io::Write,
+    path::{Path, PathBuf},
+    process::{Child, Command, Stdio},
+};
 
-use anyhow::{bail, Context, Result};
 use assert_cmd::prelude::*;
-use tempfile::{Builder, TempDir};
-use tokio::io::{self, AsyncWriteExt};
-
 use pueue::daemon::run;
 use pueue_lib::settings::*;
-use tokio::task::JoinHandle;
+use tempfile::{Builder, TempDir};
+use tokio::{
+    io::{self, AsyncWriteExt},
+    task::JoinHandle,
+};
 
 use crate::helper::*;
 
@@ -42,7 +44,6 @@ impl Drop for PueueDaemon {
 /// This is done in 90% of our tests, thereby this convenience helper.
 pub async fn daemon() -> Result<PueueDaemon> {
     let (settings, tempdir) = daemon_base_setup()?;
-
     daemon_with_settings(settings, tempdir).await
 }
 
@@ -52,7 +53,8 @@ pub async fn daemon_with_settings(settings: Settings, tempdir: TempDir) -> Resul
     // Uncomment the next line to get some daemon logging.
     // Ignore any logger initialization errors, as multiple loggers will be initialized.
     // let _ =
-    //     simplelog::SimpleLogger::init(simplelog::LevelFilter::Debug, simplelog::Config::default());
+    //     simplelog::SimpleLogger::init(simplelog::LevelFilter::Debug,
+    // simplelog::Config::default());
 
     let pueue_dir = tempdir.path();
     let path = pueue_dir.to_path_buf();
@@ -168,12 +170,21 @@ pub fn daemon_base_setup() -> Result<(Settings, TempDir)> {
     let client = Client {
         max_status_lines: Some(15),
         status_datetime_format: "%Y-%m-%d %H:%M:%S".into(),
+        edit_mode: EditMode::Files,
         ..Default::default()
     };
 
     #[allow(deprecated)]
     let daemon = Daemon {
         callback_log_lines: 15,
+        // Explicitly use bash to ensure that everyone uses the same shell
+        // when executing tests. For example, Debian uses `dash` as default shell,
+        // which expectes another syntax. We use `bash` as a common denominator.
+        shell_command: Some(vec![
+            "bash".into(),
+            "-c".into(),
+            "{{ pueue_command_string }}".into(),
+        ]),
         ..Default::default()
     };
 

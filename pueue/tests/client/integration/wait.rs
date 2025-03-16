@@ -3,11 +3,10 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use anyhow::Result;
+use pueue_lib::settings::Shared;
 use tokio::time::sleep;
 
-use crate::client::helper::*;
-use pueue_lib::settings::Shared;
+use crate::{client::helper::*, internal_prelude::*};
 
 /// All lines have the following pattern:
 /// 01:49:42 - New task 1 with status Queued
@@ -58,7 +57,7 @@ async fn multiple_tasks() -> Result<()> {
     let output = wait_handle.join().unwrap()?;
     let stdout = clean_wait_output(output.stdout);
 
-    assert_snapshot_matches_stdout("wait__multiple_tasks", stdout)?;
+    assert_snapshot_matches_output("wait__multiple_tasks", stdout)?;
 
     Ok(())
 }
@@ -86,7 +85,7 @@ async fn target_status() -> Result<()> {
     let output = wait_handle.join().unwrap()?;
     let stdout = clean_wait_output(output.stdout);
 
-    assert_snapshot_matches_stdout("wait__target_status", stdout)?;
+    assert_snapshot_matches_output("wait__target_status", stdout)?;
 
     Ok(())
 }
@@ -110,7 +109,7 @@ async fn single_task_target_status() -> Result<()> {
     let output = wait_handle.join().unwrap()?;
     let stdout = clean_wait_output(output.stdout);
 
-    assert_snapshot_matches_stdout("wait__single_task_target_status", stdout)?;
+    assert_snapshot_matches_output("wait__single_task_target_status", stdout)?;
 
     Ok(())
 }
@@ -130,7 +129,7 @@ async fn success_success() -> Result<()> {
     assert!(output.status.success(), "Got non-zero exit code on wait.");
 
     let stdout = clean_wait_output(output.stdout);
-    assert_snapshot_matches_stdout("wait__success_success", stdout)?;
+    assert_snapshot_matches_output("wait__success_success", stdout)?;
 
     Ok(())
 }
@@ -157,7 +156,7 @@ async fn success_failure() -> Result<()> {
     );
 
     let stdout = clean_wait_output(output.stdout);
-    assert_snapshot_matches_stdout("wait__success_failure", stdout)?;
+    assert_snapshot_matches_output("wait__success_failure", stdout)?;
 
     Ok(())
 }

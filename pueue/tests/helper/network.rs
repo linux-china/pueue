@@ -1,29 +1,31 @@
-use anyhow::{anyhow, bail, Context, Result};
-
-use pueue_lib::network::message::*;
-use pueue_lib::network::protocol::{
-    get_client_stream, receive_bytes, receive_message, send_bytes,
-    send_message as internal_send_message, GenericStream,
+use pueue_lib::{
+    message::*,
+    network::protocol::{
+        GenericStream, get_client_stream, receive_bytes, receive_message, send_bytes,
+        send_message as internal_send_message,
+    },
+    secret::read_shared_secret,
+    settings::Shared,
 };
-use pueue_lib::network::secret::read_shared_secret;
-use pueue_lib::settings::Shared;
+
+use crate::internal_prelude::*;
 
 /// This is a small convenience wrapper that sends a message and immediately returns the response.
-pub async fn send_message<T>(shared: &Shared, message: T) -> Result<Message>
+pub async fn send_request<T>(shared: &Shared, message: T) -> Result<Response>
 where
-    T: Into<Message>,
+    T: Into<Request>,
 {
     let mut stream = get_authenticated_stream(shared).await?;
 
     // Check if we can receive the response from the daemon
     internal_send_message(message, &mut stream)
         .await
-        .map_err(|err| anyhow!("Failed to send message: {err}"))?;
+        .map_err(|err| eyre!("Failed to send message: {err}"))?;
 
     // Check if we can receive the response from the daemon
     receive_message(&mut stream)
         .await
-        .map_err(|err| anyhow!("Failed to receive message: {err}"))
+        .map_err(|err| eyre!("Failed to receive message: {err}"))
 }
 
 /// Create a new stream that already finished the handshake and secret exchange.
@@ -31,7 +33,7 @@ where
 /// Pueue creates a new socket stream for each command, which is why we do it the same way.
 async fn get_authenticated_stream(shared: &Shared) -> Result<GenericStream> {
     // Connect to daemon and get stream used for communication.
-    let mut stream = match get_client_stream(shared).await {
+    let mut stream = match get_client_stream(shared.clone().try_into()?).await {
         Ok(stream) => stream,
         Err(err) => {
             panic!("Couldn't get client stream: {err}");

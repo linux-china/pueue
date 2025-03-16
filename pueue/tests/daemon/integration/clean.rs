@@ -1,7 +1,6 @@
-use anyhow::Result;
-use pueue_lib::network::message::*;
+use pueue_lib::{message::*, task::Task};
 
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// Ensure that clean only removes finished tasks
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -14,14 +13,14 @@ async fn test_normal_clean() -> Result<()> {
         assert_success(add_task(shared, command).await?);
     }
     // Wait for task2 to start. This implies that task[0,1] are done.
-    wait_for_task_condition(shared, 2, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 2, Task::is_running).await?;
 
     // Send the clean message
-    let clean_message = CleanMessage {
+    let clean_message = CleanRequest {
         successful_only: false,
         group: None,
     };
-    send_message(shared, clean_message).await?;
+    send_request(shared, clean_message).await?;
 
     // Assert that task 0 and 1 have both been removed
     let state = get_state(shared).await?;
@@ -42,14 +41,14 @@ async fn test_successful_only_clean() -> Result<()> {
         assert_success(add_task(shared, command).await?);
     }
     // Wait for task2 to start. This implies task[0,1] being finished.
-    wait_for_task_condition(shared, 1, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 1, Task::is_done).await?;
 
     // Send the clean message
-    let clean_message = CleanMessage {
+    let clean_message = CleanRequest {
         successful_only: true,
         group: None,
     };
-    send_message(shared, clean_message).await?;
+    send_request(shared, clean_message).await?;
 
     // Assert that task 0 is still there, as it failed.
     let state = get_state(shared).await?;
@@ -75,14 +74,14 @@ async fn test_clean_in_selected_group() -> Result<()> {
     }
 
     // Wait for task6 to start. This implies task[4,5] in the 'other' group being finished.
-    wait_for_task_condition(shared, 6, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 6, Task::is_running).await?;
 
     // Send the clean message
-    let clean_message = CleanMessage {
+    let clean_message = CleanRequest {
         successful_only: false,
         group: Some("other".to_string()),
     };
-    send_message(shared, clean_message).await?;
+    send_request(shared, clean_message).await?;
 
     // Assert that task 0 and 1 are still there
     let state = get_state(shared).await?;
@@ -113,14 +112,14 @@ async fn test_clean_successful_only_in_selected_group() -> Result<()> {
     }
 
     // Wait for task6 to start. This implies task[4,5] in the 'other' group being finished.
-    wait_for_task_condition(shared, 6, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 6, Task::is_running).await?;
 
     // Send the clean message
-    let clean_message = CleanMessage {
+    let clean_message = CleanRequest {
         successful_only: true,
         group: Some("other".to_string()),
     };
-    send_message(shared, clean_message).await?;
+    send_request(shared, clean_message).await?;
 
     let state = get_state(shared).await?;
     // group default

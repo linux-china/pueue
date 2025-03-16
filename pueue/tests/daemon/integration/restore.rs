@@ -1,16 +1,21 @@
-use anyhow::Result;
-use pretty_assertions::assert_eq;
+use pueue_lib::{GroupStatus, message::TaskSelection};
+use rstest::rstest;
 
-use pueue_lib::network::message::TaskSelection;
-use pueue_lib::state::GroupStatus;
-
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// The daemon should start in the same state as before shutdown, if no tasks are queued.
 /// This function tests for the running state.
+#[rstest]
+#[case(true)]
+#[case(false)]
 #[tokio::test]
-async fn test_start_running() -> Result<()> {
-    let (settings, _tempdir) = daemon_base_setup()?;
+async fn test_start_running(#[case] compress: bool) -> Result<()> {
+    let (mut settings, tempdir) = daemon_base_setup()?;
+    settings.daemon.compress_state_file = compress;
+    settings
+        .save(&Some(tempdir.path().join("pueue.yml")))
+        .context("Couldn't write pueue config to temporary directory")?;
+
     let mut child = standalone_daemon(&settings.shared).await?;
     let shared = &settings.shared;
 
@@ -21,12 +26,13 @@ async fn test_start_running() -> Result<()> {
     // Boot it up again
     let mut child = standalone_daemon(&settings.shared).await?;
 
-    // Assert that the group is still running.
-    let state = get_state(shared).await?;
-    assert_eq!(
-        state.groups.get(PUEUE_DEFAULT_GROUP).unwrap().status,
-        GroupStatus::Running
-    );
+    assert_group_status(
+        shared,
+        PUEUE_DEFAULT_GROUP,
+        GroupStatus::Running,
+        "Default group should still be running.",
+    )
+    .await?;
 
     child.kill()?;
     Ok(())
@@ -34,9 +40,17 @@ async fn test_start_running() -> Result<()> {
 
 /// The daemon should start in the same state as before shutdown, if no tasks are queued.
 /// This function tests for the paused state.
+#[rstest]
+#[case(true)]
+#[case(false)]
 #[tokio::test]
-async fn test_start_paused() -> Result<()> {
-    let (settings, _tempdir) = daemon_base_setup()?;
+async fn test_start_paused(#[case] compress: bool) -> Result<()> {
+    let (mut settings, tempdir) = daemon_base_setup()?;
+    settings.daemon.compress_state_file = compress;
+    settings
+        .save(&Some(tempdir.path().join("pueue.yml")))
+        .context("Couldn't write pueue config to temporary directory")?;
+
     let mut child = standalone_daemon(&settings.shared).await?;
     let shared = &settings.shared;
 
@@ -50,12 +64,13 @@ async fn test_start_paused() -> Result<()> {
     // Boot it up again
     let mut child = standalone_daemon(&settings.shared).await?;
 
-    // Assert that the group is still paused.
-    let state = get_state(shared).await?;
-    assert_eq!(
-        state.groups.get(PUEUE_DEFAULT_GROUP).unwrap().status,
-        GroupStatus::Paused
-    );
+    assert_group_status(
+        shared,
+        PUEUE_DEFAULT_GROUP,
+        GroupStatus::Paused,
+        "Default group should still be paused.",
+    )
+    .await?;
 
     child.kill()?;
     Ok(())

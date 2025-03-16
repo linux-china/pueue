@@ -5,10 +5,11 @@ use async_nats::{Client, ConnectOptions};
 use futures::stream::StreamExt;
 use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
-use pueue_lib::network::message::{AddMessage, Message};
+use pueue_lib::message::AddRequest;
+use pueue_lib::Request;
 use pueue_lib::settings::Settings;
-use pueue_lib::state::SharedState;
-use crate::daemon::network::message_handler::handle_message;
+use crate::daemon::internal_state::state::SharedState;
+use crate::daemon::network::message_handler::{handle_income_request};
 
 
 pub async fn receive_messages(state: SharedState,
@@ -21,7 +22,6 @@ pub async fn receive_messages(state: SharedState,
     let worker = PueuedWorker::new(&settings, "UP");
     let options = ConnectOptions::new().name("pueued-worker");
     let nc = async_nats::connect_with_options(&nats_host, options).await.unwrap();
-    info!("Begin to receive messages from NATS: {}, inbox: {}", nats_host, worker.inbox());
     println!("Begin to receive messages from NATS: {}, inbox: {}", nats_host, worker.inbox());
     // subscribe demo subject
     let inbox_name = worker.inbox();
@@ -37,17 +37,17 @@ pub async fn receive_messages(state: SharedState,
                     println!("pueue-001200: Pueue worker registered successfully!");
                 } else if message.starts_with("remove ") { // remove message
                     if let Ok(task_id) =  message[7..].trim().parse::<usize>() {
-                        handle_message(Message::Remove(vec![task_id]), &state, &settings);
+                        handle_income_request(Request::Remove(vec![task_id]), &state, &settings);
                     }
                 }
                 else if message.starts_with("{") { // json message
-                    if let Ok(origin_msg) = serde_json::from_str::<AddMessage>(&message) {
+                    if let Ok(origin_msg) = serde_json::from_str::<AddRequest>(&message) {
                         let group = if origin_msg.group.is_empty() {
                             "default".to_owned()
                         } else {
                             origin_msg.group.clone()
                         };
-                        let add_msg = AddMessage {
+                        let add_msg = AddRequest {
                             command: adjust_command_path(&origin_msg.command),
                             path: PathBuf::from("/tmp"),
                             envs: origin_msg.envs,
@@ -58,14 +58,13 @@ pub async fn receive_messages(state: SharedState,
                             dependencies: origin_msg.dependencies,
                             priority: origin_msg.priority,
                             label: origin_msg.label,
-                            print_task_id: false,
                         };
-                        let _ = handle_message(Message::Add(add_msg), &state, &settings);
+                        let _ = handle_income_request(Request::Add(add_msg), &state, &settings);
                     } else {
                         error!("pueue-001201: Invalid message format: {}", message);
                     }
                 } else { // command line only
-                    let add_msg = AddMessage {
+                    let add_msg = AddRequest {
                         command: adjust_command_path(&message),
                         path: PathBuf::from("/tmp"),
                         envs: Default::default(),
@@ -76,9 +75,8 @@ pub async fn receive_messages(state: SharedState,
                         dependencies: vec![],
                         priority: None,
                         label: None,
-                        print_task_id: false,
                     };
-                    let _ = handle_message(Message::Add(add_msg), &state, &settings);
+                    let _ = handle_income_request(Request::Add(add_msg), &state, &settings);
                 }
             }
             Ok::<(), async_nats::Error>(())
@@ -208,7 +206,7 @@ mod tests {
   "print_task_id": false
 }
         "#;
-        let add_msg = serde_json::from_str::<AddMessage>(json_text).unwrap();
+        let add_msg = serde_json::from_str::<AddRequest>(json_text).unwrap();
         println!("{:?}", add_msg);
     }
 }

@@ -4,69 +4,68 @@
 //! pueued as the current user. On logoff Windows kills all user processes (including the daemon).
 //!
 //! - All install/uninstallations of the service requires you are running as admin.
-//! - You must install the service. After installed, the service entry maintains a cmdline
-//!   string with args to the pueued binary. Therefore, the binary must _not_ move while the
-//!   service is installed, otherwise it will not be able to function properly. It is best
-//!   not to rely on PATH for this, as it is finicky and a hassle for user setup. Absolute paths
-//!   are the way to go, and it is standard practice.
+//! - You must install the service. After installed, the service entry maintains a cmdline string
+//!   with args to the pueued binary. Therefore, the binary must _not_ move while the service is
+//!   installed, otherwise it will not be able to function properly. It is best not to rely on PATH
+//!   for this, as it is finicky and a hassle for user setup. Absolute paths are the way to go, and
+//!   it is standard practice.
 //! - To move the pueued binary: Uninstall the service, move the binary, and reinstall the service.
-//! - When the service is installed, you can use pueued cli to start, stop, or uninstall the service.
-//!   You can also use the official service manager to start, stop, and restart the service.
+//! - When the service is installed, you can use pueued cli to start, stop, or uninstall the
+//!   service. You can also use the official service manager to start, stop, and restart the
+//!   service.
 //! - Services are automatically started/stopped by the system according to the setting the user
-//!   sets in the windows service manager. By default we install it as autostart, but the user
-//!   can set this to manual or even disabled.
+//!   sets in the windows service manager. By default we install it as autostart, but the user can
+//!   set this to manual or even disabled.
 //! - If you have the official service manager window open and you tell pueued to uninstall the
-//!   service, it will not disappear from the list until you close all service manager windows.
-//!   This is not a bug. It's Windows specific behavior. (In Windows parlance, the service is pending
+//!   service, it will not disappear from the list until you close all service manager windows. This
+//!   is not a bug. It's Windows specific behavior. (In Windows parlance, the service is pending
 //!   deletion, and all HANDLES to the service need to be closed).
-//! - We do not support long running daemon past when a user logs off; this would be
-//!   a massive security risk to allow anyone to launch tasks as SYSTEM. This account bypasses
-//!   even administrator in power!
+//! - We do not support long running daemon past when a user logs off; this would be a massive
+//!   security risk to allow anyone to launch tasks as SYSTEM. This account bypasses even
+//!   administrator in power!
 //! - Additionally, taking the above into account, as SYSTEM is its own account, the user config
-//!   does not apply to this account. Unless there's an exception for config locations with this case,
-//!   you'd have to set up separate configs for the SYSTEM account in
+//!   does not apply to this account. Unless there's an exception for config locations with this
+//!   case, you'd have to set up separate configs for the SYSTEM account in
 //!   `C:\Windows\system32\config\systemprofile\AppData`. (And even if there's an exception, what if
 //!   there's multiple users? Which user's config would be used?) This is very unintuitive.
-//! - Is the service failing to start up? It's probably a problem with the daemon itself. Re-run `pueued`
-//!   by itself to see the actual startup error.
+//! - Is the service failing to start up? It's probably a problem with the daemon itself. Re-run
+//!   `pueued` by itself to see the actual startup error.
 
 use std::{
     env,
-    ffi::{c_void, OsString},
+    ffi::{OsString, c_void},
     iter,
     path::PathBuf,
     ptr,
     sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc::{channel, Receiver, Sender},
         Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{Receiver, Sender, channel},
     },
     thread,
     time::Duration,
 };
 
-use anyhow::{anyhow, bail, Result};
-use log::{debug, error, info};
 use windows::{
-    core::{Free, PCWSTR, PWSTR},
     Win32::{
         Foundation::{HANDLE, LUID},
         Security::{
-            AdjustTokenPrivileges, DuplicateTokenEx, LookupPrivilegeValueW, SecurityIdentification,
-            TokenPrimary, SE_PRIVILEGE_ENABLED, SE_PRIVILEGE_REMOVED, SE_TCB_NAME,
-            TOKEN_ACCESS_MASK, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES,
+            AdjustTokenPrivileges, DuplicateTokenEx, LookupPrivilegeValueW, SE_PRIVILEGE_ENABLED,
+            SE_PRIVILEGE_REMOVED, SE_TCB_NAME, SecurityIdentification, TOKEN_ACCESS_MASK,
+            TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TokenPrimary,
         },
         System::{
             Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock},
             RemoteDesktop::{WTSGetActiveConsoleSessionId, WTSQueryUserToken},
             SystemServices::MAXIMUM_ALLOWED,
             Threading::{
-                CreateProcessAsUserW, GetCurrentProcess, GetExitCodeProcess, OpenProcessToken,
-                TerminateProcess, WaitForSingleObject, CREATE_NO_WINDOW,
-                CREATE_UNICODE_ENVIRONMENT, INFINITE, PROCESS_INFORMATION, STARTUPINFOW,
+                CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW,
+                GetCurrentProcess, GetExitCodeProcess, INFINITE, OpenProcessToken,
+                PROCESS_INFORMATION, STARTUPINFOW, TerminateProcess, WaitForSingleObject,
             },
         },
     },
+    core::{Free, PCWSTR, PWSTR},
 };
 use windows_service::{
     define_windows_service,
@@ -79,6 +78,8 @@ use windows_service::{
     service_dispatcher,
     service_manager::{ServiceManager, ServiceManagerAccess},
 };
+
+use crate::internal_prelude::*;
 
 #[derive(Clone)]
 struct Config {
@@ -94,7 +95,7 @@ const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
 // For how this works, please see docs @
-// https://docs.rs/windows-service/0.7.0/windows_service/#basics
+// <https://docs.rs/windows-service/0.7.0/windows_service/#basics>
 define_windows_service!(ffi_service_main, service_main);
 
 /// The main service callback after `ffi_service_main`.
@@ -163,8 +164,9 @@ pub fn uninstall_service() -> Result<()> {
     let service = service_manager.open_service(SERVICE_NAME, service_access)?;
 
     // The service will be marked for deletion as long as this function call succeeds.
-    // However, it will not be deleted from the database until it is stopped and all open handles to it are closed.
-    // If the service manager window is open, it will need to be closed before the service gets deleted.
+    // However, it will not be deleted from the database until it is stopped and all open handles to
+    // it are closed. If the service manager window is open, it will need to be closed before
+    // the service gets deleted.
     service.delete()?;
 
     // Our handle to it is not closed yet. So we can still query it.
@@ -191,8 +193,8 @@ pub fn start_service() -> Result<()> {
             service.start::<String>(&[])?;
             println!("Successfully started service");
         }
-        ServiceState::StartPending => println!("Service is already starting"),
-        ServiceState::Running => println!("Service is already running"),
+        ServiceState::StartPending => eprintln!("Service is already starting"),
+        ServiceState::Running => eprintln!("Service is already running"),
 
         _ => (),
     }
@@ -211,8 +213,10 @@ pub fn stop_service() -> Result<()> {
     let service = service_manager.open_service(SERVICE_NAME, service_access)?;
 
     match service.query_status()?.current_state {
-        ServiceState::Stopped => println!("Service is already stopped"),
-        ServiceState::StartPending => println!("Service cannot stop because it is starting (please wait until it fully started to stop it)"),
+        ServiceState::Stopped => eprintln!("Service is already stopped"),
+        ServiceState::StartPending => eprintln!(
+            "Service cannot stop because it is starting (please wait until it fully started to stop it)"
+        ),
         ServiceState::Running => {
             service.stop()?;
             println!("Successfully stopped service");
@@ -233,7 +237,7 @@ pub fn run_service(config_path: Option<PathBuf>, profile: Option<String>) -> Res
             config_path,
             profile,
         })
-        .map_err(|_| anyhow!("static CONFIG set failed"))?;
+        .map_err(|_| eyre!("static CONFIG set failed"))?;
 
     service_dispatcher::start(SERVICE_NAME, ffi_service_main)?;
     Ok(())
@@ -257,8 +261,8 @@ fn event_loop() -> Result<()> {
                 // Stop
                 ServiceControl::Stop => {
                     debug!("event stop");
-                    // Important! Set the while loop's exit condition before calling stop(), otherwise
-                    // the condition will not be observed.
+                    // Important! Set the while loop's exit condition before calling stop(),
+                    // otherwise the condition will not be observed.
                     shutdown.store(true, Ordering::Relaxed);
                     spawner.stop();
 
@@ -340,8 +344,8 @@ fn event_loop() -> Result<()> {
     //
     // If we can get the current user session on startup, then try to start the spawner.
     //
-    // If we can't get the current session, that's OK. It just means there was no user logged in when
-    // the service started.
+    // If we can't get the current session, that's OK. It just means there was no user logged in
+    // when the service started.
     //
     // The event handler will start it when the user logs in.
     if let Some(session) = get_current_session() {
@@ -370,7 +374,7 @@ fn event_loop() -> Result<()> {
 }
 
 /// Set the specified process privilege to state.
-/// https://learn.microsoft.com/en-us/windows/win32/secauthz/privilege-constants
+/// <https://learn.microsoft.com/en-us/windows/win32/secauthz/privilege-constants>
 fn set_privilege(name: PCWSTR, state: bool) -> Result<()> {
     let process: OwnedHandle = unsafe { GetCurrentProcess().into() };
 
@@ -413,7 +417,7 @@ fn get_current_session() -> Option<u32> {
 
     match session {
         // No session attached.
-        // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-wtsgetactiveconsolesessionid#return-value
+        // <https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-wtsgetactiveconsolesessionid#return-value>
         0xFFFFFFFF => None,
         // Found a session!
         session => Some(session),
@@ -426,7 +430,7 @@ fn run_as<T>(session_id: u32, cb: impl FnOnce(HANDLE) -> Result<T>) -> Result<T>
     // Obtain the user's primary access token. Requires we are SYSTEM and have SE_TCB_NAME.
     //
     // Make sure to not leak this token anywhere, as it must remain secure.
-    // https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsqueryusertoken
+    // <https://learn.microsoft.com/en-us/windows/win32/api/wtsapi32/nf-wtsapi32-wtsqueryusertoken>
     unsafe {
         WTSQueryUserToken(session_id, &mut query_token.0)?;
     }
@@ -487,7 +491,7 @@ impl Child {
     fn kill(&mut self) -> Result<()> {
         if self.0.is_valid() {
             unsafe {
-                TerminateProcess(self.0 .0, 0)?;
+                TerminateProcess(self.0.0, 0)?;
             }
 
             self.0 = OwnedHandle::default();
@@ -514,7 +518,7 @@ impl Drop for Child {
 }
 
 /// A users' environment block.
-/// https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createenvironmentblock
+/// <https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createenvironmentblock>
 struct EnvBlock(*mut c_void);
 
 impl EnvBlock {
@@ -522,7 +526,7 @@ impl EnvBlock {
     fn new(token: HANDLE) -> Result<Self> {
         let mut env = ptr::null_mut();
         unsafe {
-            CreateEnvironmentBlock(&mut env, token, false)?;
+            CreateEnvironmentBlock(&mut env, Some(token), false)?;
         }
 
         Ok(Self(env))
@@ -535,7 +539,8 @@ impl Drop for EnvBlock {
     }
 }
 
-/// Manages the child daemon, by spawning / stopping it, or reporting abnormal exit, and allowing wait().
+/// Manages the child daemon, by spawning / stopping it, or reporting abnormal exit, and allowing
+/// wait().
 struct Spawner {
     // Whether a child daemon is running.
     running: Arc<AtomicBool>,
@@ -622,7 +627,7 @@ impl Spawner {
 
                 let config = CONFIG
                     .get()
-                    .ok_or_else(|| anyhow!("failed to get CONFIG"))?
+                    .ok_or_else(|| eyre!("failed to get CONFIG"))?
                     .clone();
 
                 if let Some(config) = &config.config_path {
@@ -655,17 +660,17 @@ impl Spawner {
                 let mut process_info = PROCESS_INFORMATION::default();
                 unsafe {
                     CreateProcessAsUserW(
-                        token,
+                        Some(token),
                         PWSTR(current_exe.as_mut_ptr()),
-                        PWSTR(arguments.as_mut_ptr()),
+                        Some(PWSTR(arguments.as_mut_ptr())),
                         None,
                         None,
                         false,
                         // CREATE_UNICODE_ENVIRONMENT is required if we pass env block.
-                        // https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createenvironmentblock#remarks
+                        // <https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createenvironmentblock#remarks>
                         //
-                        // CREATE_NO_WINDOW causes all child processes to not show a visible console window.
-                        // https://stackoverflow.com/a/71364777/9423933
+                        // CREATE_NO_WINDOW causes all child processes to not show a visible
+                        // console window. <https://stackoverflow.com/a/71364777/9423933>
                         CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
                         Some(env_block.0),
                         None,
@@ -675,7 +680,7 @@ impl Spawner {
                 }
 
                 // It is safe to drop this after calling CreateProcessAsUser.
-                // https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createenvironmentblock#remarks
+                // <https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createenvironmentblock#remarks>
                 drop(env_block);
 
                 // Store the child process.
@@ -693,7 +698,8 @@ impl Spawner {
 
                 running.store(false, Ordering::Relaxed);
 
-                // Check if process exited on its own without our explicit request (`stop()` was not called).
+                // Check if process exited on its own without our explicit request (`stop()` was not
+                // called).
                 if !request_stop.swap(false, Ordering::Relaxed) {
                     let mut code = 0u32;
                     unsafe {

@@ -1,7 +1,7 @@
-use anyhow::{Context, Result};
+use pueue_lib::task::Task;
 use rstest::rstest;
 
-use crate::client::helper::*;
+use crate::{client::helper::*, internal_prelude::*};
 
 pub fn set_read_local_logs(daemon: &mut PueueDaemon, read_local_logs: bool) -> Result<()> {
     // Force the client to read remote logs via config file.
@@ -27,13 +27,33 @@ async fn default(#[case] read_local_logs: bool) -> Result<()> {
 
     // Add a task and wait until it started.
     assert_success(add_task(shared, "sleep 1 && echo test").await?);
-    wait_for_task_condition(shared, 0, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 0, Task::is_running).await?;
 
     // Execute `follow`.
     // This will result in the client receiving the streamed output until the task finished.
     let output = run_client_command(shared, &["follow"])?;
 
-    assert_snapshot_matches_stdout("follow__default", output.stdout)?;
+    assert_snapshot_matches_output("follow__default", output.stdout)?;
+
+    Ok(())
+}
+
+/// Test that a task is immediately followed when added with `--immediate --follow`.
+#[rstest]
+#[case(true)]
+#[case(false)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn follow_on_immediate_add(#[case] read_local_logs: bool) -> Result<()> {
+    let mut daemon = daemon().await?;
+    set_read_local_logs(&mut daemon, read_local_logs)?;
+    let shared = &daemon.settings.shared;
+
+    let output = run_client_command(
+        shared,
+        &["add", "--immediate", "--follow", "sleep 1 && echo test"],
+    )?;
+
+    assert_snapshot_matches_output("follow__default", output.stdout)?;
 
     Ok(())
 }
@@ -51,12 +71,12 @@ async fn last_lines(#[case] read_local_logs: bool) -> Result<()> {
 
     // Add a task which echos 8 lines of output
     assert_success(add_task(shared, "echo \"1\n2\n3\n4\n5\n6\n7\n8\" && sleep 1").await?);
-    wait_for_task_condition(shared, 0, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 0, Task::is_running).await?;
 
     // Follow the task, but only print the last 4 lines of the output.
     let output = run_client_command(shared, &["follow", "--lines=4"])?;
 
-    assert_snapshot_matches_stdout("follow__last_lines", output.stdout)?;
+    assert_snapshot_matches_output("follow__last_lines", output.stdout)?;
 
     Ok(())
 }
@@ -77,7 +97,7 @@ async fn wait_for_task(#[case] read_local_logs: bool) -> Result<()> {
     // Wait for the task to start and follow until it finisheds.
     let output = run_client_command(shared, &["follow", "0"])?;
 
-    assert_snapshot_matches_stdout("follow__default", output.stdout)?;
+    assert_snapshot_matches_output("follow__default", output.stdout)?;
 
     Ok(())
 }
@@ -96,7 +116,7 @@ async fn fail_on_non_existing(#[case] read_local_logs: bool) -> Result<()> {
     // The client should exit with exit code `1`.
     let output = run_client_command(shared, &["follow", "0"])?;
     assert!(!output.status.success(), "follow got an unexpected exit 0");
-    assert_snapshot_matches_stdout("follow__fail_on_non_existing", output.stdout)?;
+    assert_snapshot_matches_output("follow__fail_on_non_existing", output.stderr)?;
 
     Ok(())
 }
@@ -123,7 +143,7 @@ async fn fail_on_non_existing(#[case] read_local_logs: bool) -> Result<()> {
 //
 //     // Add a task echoes something and waits for a while
 //     assert_success(add_task(shared, "echo test && sleep 20").await?);
-//     wait_for_task_condition(shared, 0, |task| task.is_running()).await?;
+//     wait_for_task_condition(shared, 0, Task::is_running).await?;
 //
 //     // Reset the daemon after 2 seconds. At this point, the client will already be following the
 //     // output and should notice that the task went away..
@@ -133,9 +153,9 @@ async fn fail_on_non_existing(#[case] read_local_logs: bool) -> Result<()> {
 //     tokio::task::spawn(async move {
 //         sleep_ms(2000).await;
 //         // Reset the daemon
-//         send_message(&moved_shared, ResetMessage {})
+//         send_request(&moved_shared, ResetRequest {})
 //             .await
-//             .expect("Failed to send Start tasks message");
+//             .expect("Failed to send reset request");
 //     });
 //
 //     // Execute `follow` and remove the task

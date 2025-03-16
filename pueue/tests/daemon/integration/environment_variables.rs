@@ -1,6 +1,6 @@
-use anyhow::Result;
+use pueue_lib::task::Task;
 
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// Make sure that the daemon's environment variables don't bleed into the spawned subprocesses.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -14,7 +14,7 @@ async fn test_isolated_task_environment() -> Result<()> {
     // This environment variable is injected into the daemon's environment.
     // It shouldn't show up in the task's environment, as the task should be isolated!
     assert_success(add_and_start_task(shared, "echo $PUEUED_TEST_ENV_VARIABLE").await?);
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     let log = get_task_log(shared, 0, None).await?;
 

@@ -1,20 +1,19 @@
-use std::collections::HashMap;
-use std::env::vars;
-
-use anyhow::{anyhow, Context, Result};
+use std::{collections::HashMap, env::vars};
 
 use chrono::{DateTime, Local};
-use pueue_lib::network::message::*;
-use pueue_lib::settings::*;
-use pueue_lib::task::{Task, TaskStatus};
+use pueue_lib::{
+    message::*,
+    settings::*,
+    task::{Task, TaskStatus},
+};
 
 use crate::helper::*;
 
-/// Create a bare AddMessage for testing.
+/// Create a bare [AddRequest] for testing.
 /// This is just here to minimize boilerplate code.
-pub fn create_add_message(shared: &Shared, command: &str) -> AddMessage {
-    AddMessage {
-        command: command.into(),
+pub fn create_add_message<C: ToString>(shared: &Shared, command: C) -> AddRequest {
+    AddRequest {
+        command: command.to_string(),
         path: shared.pueue_directory(),
         envs: HashMap::from_iter(vars()),
         start_immediately: false,
@@ -24,7 +23,6 @@ pub fn create_add_message(shared: &Shared, command: &str) -> AddMessage {
         dependencies: Vec::new(),
         priority: None,
         label: None,
-        print_task_id: false,
     }
 }
 
@@ -33,30 +31,30 @@ pub async fn create_stashed_task(
     shared: &Shared,
     command: &str,
     enqueue_at: Option<DateTime<Local>>,
-) -> Result<Message> {
+) -> Result<Response> {
     let mut message = create_add_message(shared, command);
     message.stashed = true;
     message.enqueue_at = enqueue_at;
 
-    send_message(shared, message)
+    send_request(shared, message)
         .await
         .context("Failed to to add task message")
 }
 
 /// Helper to either continue the daemon or start specific tasks
-pub async fn start_tasks(shared: &Shared, tasks: TaskSelection) -> Result<Message> {
-    let message = StartMessage { tasks };
+pub async fn start_tasks(shared: &Shared, tasks: TaskSelection) -> Result<Response> {
+    let message = StartRequest { tasks };
 
-    send_message(shared, message)
+    send_request(shared, message)
         .await
         .context("Failed to send Start tasks message")
 }
 
 /// Helper to pause the default group of the daemon
-pub async fn pause_tasks(shared: &Shared, tasks: TaskSelection) -> Result<Message> {
-    let message = PauseMessage { tasks, wait: false };
+pub async fn pause_tasks(shared: &Shared, tasks: TaskSelection) -> Result<Response> {
+    let message = PauseRequest { tasks, wait: false };
 
-    send_message(shared, message)
+    send_request(shared, message)
         .await
         .context("Failed to send Pause message")
 }
@@ -67,7 +65,7 @@ pub async fn get_task(shared: &Shared, task_id: usize) -> Result<Task> {
     let task = state
         .tasks
         .get(&0)
-        .ok_or_else(|| anyhow!("Couldn't find task {task_id}"))?;
+        .ok_or_else(|| eyre!("Couldn't find task {task_id}"))?;
 
     Ok(task.clone())
 }

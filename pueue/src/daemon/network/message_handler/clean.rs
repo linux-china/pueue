@@ -1,13 +1,9 @@
-use pueue_lib::log::clean_log_handles;
-use pueue_lib::network::message::*;
-use pueue_lib::state::SharedState;
-use pueue_lib::task::{TaskResult, TaskStatus};
+use pueue_lib::{TaskResult, TaskStatus, log::clean_log_handles, message::*};
 
 use super::*;
-use crate::daemon::state_helper::{is_task_removable, save_state};
-use crate::ok_or_save_state_failure;
+use crate::{daemon::internal_state::SharedState, ok_or_save_state_failure};
 
-fn construct_success_clean_message(message: CleanMessage) -> String {
+fn construct_success_clean_message(message: CleanRequest) -> String {
     let successful_only_fix = if message.successful_only {
         " successfully"
     } else {
@@ -24,7 +20,7 @@ fn construct_success_clean_message(message: CleanMessage) -> String {
 
 /// Invoked when calling `pueue clean`.
 /// Remove all failed or done tasks from the state.
-pub fn clean(settings: &Settings, state: &SharedState, message: CleanMessage) -> Message {
+pub fn clean(settings: &Settings, state: &SharedState, message: CleanRequest) -> Response {
     let mut state = state.lock().unwrap();
 
     let filtered_tasks =
@@ -32,12 +28,12 @@ pub fn clean(settings: &Settings, state: &SharedState, message: CleanMessage) ->
 
     for task_id in &filtered_tasks.matching_ids {
         // Ensure the task is removable, i.e. there are no dependant tasks.
-        if !is_task_removable(&state, task_id, &[]) {
+        if !state.is_task_removable(task_id, &[]) {
             continue;
         }
 
         if message.successful_only || message.group.is_some() {
-            if let Some(task) = state.tasks.get(task_id) {
+            if let Some(task) = state.tasks().get(task_id) {
                 // Check if we should ignore this task, if only successful tasks should be removed.
                 if message.successful_only
                     && !matches!(
@@ -58,25 +54,25 @@ pub fn clean(settings: &Settings, state: &SharedState, message: CleanMessage) ->
                 }
             }
         }
-        let _ = state.tasks.remove(task_id).unwrap();
+        let _ = state.tasks_mut().remove(task_id).unwrap();
         clean_log_handles(*task_id, &settings.shared.pueue_directory());
     }
 
-    ok_or_save_state_failure!(save_state(&state, settings));
+    ok_or_save_state_failure!(state.save(settings));
 
-    create_success_message(construct_success_clean_message(message))
+    create_success_response(construct_success_clean_message(message))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::fixtures::*;
-    use super::*;
-
     use pretty_assertions::assert_eq;
     use tempfile::TempDir;
 
-    fn get_message(successful_only: bool, group: Option<String>) -> CleanMessage {
-        CleanMessage {
+    use super::{super::fixtures::*, *};
+    use crate::daemon::internal_state::state::InternalState;
+
+    fn get_message(successful_only: bool, group: Option<String>) -> CleanRequest {
+        CleanRequest {
             successful_only,
             group,
         }
@@ -86,7 +82,7 @@ mod tests {
         fn add_stub_task(&mut self, id: &str, group: &str, task_result: TaskResult);
     }
 
-    impl TaskAddable for State {
+    impl TaskAddable for InternalState {
         fn add_stub_task(&mut self, id: &str, group: &str, task_result: TaskResult) {
             let task = get_stub_task_in_group(id, group, StubStatus::Done(task_result));
             self.add_task(task);
@@ -101,7 +97,7 @@ mod tests {
             let mut state = state.lock().unwrap();
 
             for &group in groups {
-                if !state.groups.contains_key(group) {
+                if !state.groups().contains_key(group) {
                     state.create_group(group);
                 }
 
@@ -125,13 +121,13 @@ mod tests {
         let message = clean(&settings, &state, get_message(false, None));
 
         // Return message is correct
-        assert!(matches!(message, Message::Success(_)));
-        if let Message::Success(text) = message {
+        assert!(matches!(message, Response::Success(_)));
+        if let Response::Success(text) = message {
             assert_eq!(text, "All finished tasks have been removed");
         };
 
         let state = state.lock().unwrap();
-        assert_eq!(state.tasks.len(), 4);
+        assert_eq!(state.tasks().len(), 4);
     }
 
     #[test]
@@ -142,13 +138,13 @@ mod tests {
         let message = clean(&settings, &state, get_message(false, None));
 
         // Return message is correct
-        assert!(matches!(message, Message::Success(_)));
-        if let Message::Success(text) = message {
+        assert!(matches!(message, Response::Success(_)));
+        if let Response::Success(text) = message {
             assert_eq!(text, "All finished tasks have been removed");
         };
 
         let state = state.lock().unwrap();
-        assert!(state.tasks.is_empty());
+        assert!(state.tasks().is_empty());
     }
 
     #[test]
@@ -160,15 +156,15 @@ mod tests {
         let message = clean(&settings, &state, get_message(true, None));
 
         // Return message is correct
-        assert!(matches!(message, Message::Success(_)));
-        if let Message::Success(text) = message {
+        assert!(matches!(message, Response::Success(_)));
+        if let Response::Success(text) = message {
             assert_eq!(text, "All successfully finished tasks have been removed");
         };
 
         // Assert that only the first entry has been deleted (TaskResult::Success)
         let state = state.lock().unwrap();
-        assert_eq!(state.tasks.len(), 5);
-        assert!(!state.tasks.contains_key(&0));
+        assert_eq!(state.tasks().len(), 5);
+        assert!(!state.tasks().contains_key(&0));
     }
 
     #[test]
@@ -179,9 +175,9 @@ mod tests {
         let message = clean(&settings, &state, get_message(false, Some("other".into())));
 
         // Return message is correct
-        assert!(matches!(message, Message::Success(_)));
+        assert!(matches!(message, Response::Success(_)));
 
-        if let Message::Success(text) = message {
+        if let Response::Success(text) = message {
             assert_eq!(
                 text,
                 "All finished tasks have been removed from group 'other'"
@@ -190,8 +186,8 @@ mod tests {
 
         // Assert that only the 'other' group has been cleared
         let state = state.lock().unwrap();
-        assert_eq!(state.tasks.len(), 6);
-        assert!(state.tasks.iter().all(|(_, task)| &task.group != "other"));
+        assert_eq!(state.tasks().len(), 6);
+        assert!(state.tasks().iter().all(|(_, task)| &task.group != "other"));
     }
 
     #[test]
@@ -202,18 +198,19 @@ mod tests {
         let message = clean(&settings, &state, get_message(true, Some("other".into())));
 
         // Return message is correct
-        assert!(matches!(message, Message::Success(_)));
+        assert!(matches!(message, Response::Success(_)));
 
-        if let Message::Success(text) = message {
+        if let Response::Success(text) = message {
             assert_eq!(
                 text,
                 "All successfully finished tasks have been removed from group 'other'"
             );
         };
 
-        // Assert that only the first entry has been deleted from the 'other' group (TaskResult::Success)
+        // Assert that only the first entry has been deleted from the 'other' group
+        // (TaskResult::Success)
         let state = state.lock().unwrap();
-        assert_eq!(state.tasks.len(), 11);
-        assert!(!state.tasks.contains_key(&6));
+        assert_eq!(state.tasks().len(), 11);
+        assert!(!state.tasks().contains_key(&6));
     }
 }

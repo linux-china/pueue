@@ -1,9 +1,7 @@
-use anyhow::Result;
+use pueue_lib::{Task, message::TaskSelection};
 use rstest::rstest;
 
-use pueue_lib::network::message::TaskSelection;
-
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// For tasks with the same priority, lowest ids are started first.
 #[rstest]
@@ -26,8 +24,8 @@ async fn test_default_ordering(#[case] priority: i32) -> Result<()> {
     start_tasks(shared, TaskSelection::All).await?;
 
     // Make sure task 0 is being started and task 1 is still waiting.
-    wait_for_task_condition(shared, 0, |task| task.is_running()).await?;
-    wait_for_task_condition(shared, 1, |task| task.is_queued()).await?;
+    wait_for_task_condition(shared, 0, Task::is_running).await?;
+    wait_for_task_condition(shared, 1, Task::is_queued).await?;
 
     Ok(())
 }
@@ -50,9 +48,9 @@ async fn test_highest_priority_first() -> Result<()> {
     start_tasks(shared, TaskSelection::All).await?;
 
     // Make sure task 0 is being started and task 1 is still waiting.
-    wait_for_task_condition(shared, 2, |task| task.is_running()).await?;
-    wait_for_task_condition(shared, 1, |task| task.is_queued()).await?;
-    wait_for_task_condition(shared, 0, |task| task.is_queued()).await?;
+    wait_for_task_condition(shared, 2, Task::is_running).await?;
+    wait_for_task_condition(shared, 1, Task::is_queued).await?;
+    wait_for_task_condition(shared, 0, Task::is_queued).await?;
 
     Ok(())
 }
@@ -75,9 +73,9 @@ async fn test_default_priority_over_negative_priority() -> Result<()> {
     start_tasks(shared, TaskSelection::All).await?;
 
     // Make sure task 0 is being started and task 1 is still waiting.
-    wait_for_task_condition(shared, 2, |task| task.is_running()).await?;
-    wait_for_task_condition(shared, 0, |task| task.is_queued()).await?;
-    wait_for_task_condition(shared, 1, |task| task.is_queued()).await?;
+    wait_for_task_condition(shared, 2, Task::is_running).await?;
+    wait_for_task_condition(shared, 0, Task::is_queued).await?;
+    wait_for_task_condition(shared, 1, Task::is_queued).await?;
 
     Ok(())
 }

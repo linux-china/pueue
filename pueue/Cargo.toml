@@ -1,88 +1,116 @@
 [package]
 name = "pueue"
-version = "4.0.0-rc.1"
+version = "4.0.0"
 description = "A cli tool for managing long running shell commands."
-keywords = ["shell", "command", "parallel", "task", "queue"]
 readme = "../README.md"
+keywords = ["command", "parallel", "queue", "shell", "task"]
 authors.workspace = true
-homepage.workspace = true
-repository.workspace = true
-license.workspace = true
 edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 
 [badges]
 maintenance = { status = "actively-developed" }
 
+[[bench]]
+harness = false
+name = "save_compressed_state"
+
+[[bench]]
+harness = false
+name = "save_state"
+
 [dependencies]
-anyhow = "1.0"
+async-trait.workspace = true
 chrono.workspace = true
-clap = { version = "4.5.1", features = ["cargo", "derive", "help"] }
-clap_complete = "4.5.1"
-clap_complete_nushell = "4.5.1"
+clap = { version = "4.5.31", features = [
+    "cargo",
+    "derive",
+    "help",
+    "wrap_help",
+] }
+clap_complete = "4.5.46"
+clap_complete_nushell = "4.5.5"
+color-eyre.workspace = true
 comfy-table = "7"
 command-group.workspace = true
 ctrlc = { version = "3", features = ["termination"] }
+flate2 = "1"
 handlebars.workspace = true
-interim = { version = "0.1.2", features = ["chrono"] }
-log.workspace = true
+interim = { version = "0.2.0", features = ["chrono_0_4"] }
 pest = "2.7"
 pest_derive = "2.7"
-pueue-lib = { version = "0.27.0", path = "../pueue_lib" }
+pueue-lib = { version = "0.29.0", path = "../pueue_lib", features = ["client"] }
+rcgen = "0.13"
+rustls.workspace = true
+rustls-pemfile.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml.workspace = true
 shell-escape = "0.1"
-simplelog = "0.12"
 snap.workspace = true
 strum.workspace = true
 tempfile = "3"
-tokio = { workspace = true }
+tokio.workspace = true
+tokio-rustls.workspace = true
+toml = "0.8"
+tracing.workspace = true
+tracing-error.workspace = true
+tracing-subscriber.workspace = true
 lazy_static = "1.5.0"
 serde_derive = "1"
-nats = "0.25"
-async-nats = "0.38"
+log = "0.4"
+anyhow = "1.0"
+nats = { git = "https://github.com/nats-io/nats.rs", rev = "db712168900dc74e2e8982c651d716186bef4fc9" }
+async-nats = "0.39"
 futures = "0.3"
 uuid = { version = "1.10.0", features = ["v4"] }
 local-ip-address = "0.6"
 which = "7"
 
 [dev-dependencies]
-anyhow.workspace = true
 assert_cmd = "2"
 assert_matches = "1"
 better-panic.workspace = true
-# Make it easy to view log output for select tests.
-# Set log level for tests with RUST_LOG=<level>, use with failed tests or
-# disable test stdout/stderr capture (`cargo test -- --nocapture` / `cargo
-# nextest run --no-capture`)
-env_logger = "0.11"
+ciborium = { workspace = true }
+criterion = "0.5"
 pretty_assertions.workspace = true
-rstest = "0.23"
-serde_yaml.workspace = true
+rstest = "0.24"
 similar-asserts = "1"
-test-log = "0.2"
 
+# --- Platform specific dependencies ---
+
+# Linux
+[target.'cfg(target_os = "linux")'.dependencies]
+procfs = { version = "0.17", default-features = false }
+
+# Linux + Mac OS
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+libproc = "0.14.10"
+
+# Windows
 # We don't need any of the default features for crossterm.
 # However, the windows build needs the windows feature enabled.
 [target.'cfg(not(windows))'.dependencies]
 crossterm = { version = "0.28", default-features = false }
 [target.'cfg(windows)'.dependencies]
 crossterm = { version = "0.28", default-features = false, features = [
-  "windows",
+    "windows",
 ] }
-windows = { version = "0.58.0", features = [
-  "Win32_Security",
-  "Win32_System_Environment",
-  "Win32_System_RemoteDesktop",
-  "Win32_System_SystemServices",
-  "Win32_System_Threading",
+winapi = { version = "0.3", features = [
+    "errhandlingapi",
+    "impl-default",
+    "minwindef",
+    "processthreadsapi",
+    "tlhelp32",
 ] }
-windows-service = "0.7.0"
-
-# Test specific dev-dependencies
-[target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "netbsd"))'.dependencies]
-whoami = "1"
-
-# Test specific Linux dev-dependencies
-[target.'cfg(target_os = "linux")'.dependencies]
-procfs = { version = "0.17", default-features = false }
+windows = { version = "0.60.0", features = [
+    "Win32_Security",
+    "Win32_System_Environment",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+] }
+windows-service = "0.8.0"

@@ -1,15 +1,11 @@
-use log::{error, info};
+use pueue_lib::{GroupStatus, Settings, TaskStatus, message::TaskSelection};
 
-use pueue_lib::network::message::TaskSelection;
-use pueue_lib::process_helper::ProcessAction;
-use pueue_lib::settings::Settings;
-use pueue_lib::state::GroupStatus;
-use pueue_lib::task::TaskStatus;
-
-use crate::daemon::state_helper::{save_state, LockedState};
-use crate::ok_or_shutdown;
-
-use super::perform_action;
+use crate::{
+    daemon::{internal_state::state::LockedState, process_handler::perform_action},
+    internal_prelude::*,
+    ok_or_shutdown,
+    process_helper::ProcessAction,
+};
 
 /// Pause specific tasks or groups.
 ///
@@ -20,7 +16,7 @@ pub fn pause(settings: &Settings, state: &mut LockedState, selection: TaskSelect
         TaskSelection::TaskIds(task_ids) => task_ids,
         TaskSelection::Group(group_name) => {
             // Ensure that a given group exists. (Might not happen due to concurrency)
-            let group = match state.groups.get_mut(&group_name) {
+            let group = match state.groups_mut().get_mut(&group_name) {
                 Some(group) => group,
                 None => return,
             };
@@ -49,7 +45,7 @@ pub fn pause(settings: &Settings, state: &mut LockedState, selection: TaskSelect
     if !wait {
         for id in keys {
             // Get the enqueued_at/start times from the current state.
-            let (enqueued_at, start) = match state.tasks.get(&id).unwrap().status {
+            let (enqueued_at, start) = match state.tasks_mut().get(&id).unwrap().status {
                 TaskStatus::Running { enqueued_at, start }
                 | TaskStatus::Paused { enqueued_at, start } => (enqueued_at, start),
                 _ => continue,
@@ -69,5 +65,5 @@ pub fn pause(settings: &Settings, state: &mut LockedState, selection: TaskSelect
         }
     }
 
-    ok_or_shutdown!(settings, state, save_state(state, settings));
+    ok_or_shutdown!(settings, state, state.save(settings));
 }

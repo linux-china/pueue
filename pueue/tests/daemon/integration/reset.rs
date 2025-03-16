@@ -1,7 +1,6 @@
-use anyhow::{Context, Result};
-use pueue_lib::{network::message::*, state::GroupStatus};
+use pueue_lib::{GroupStatus, Task, message::*};
 
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// A reset command kills all tasks and forces a clean state accross groups.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -14,12 +13,12 @@ async fn test_reset() -> Result<()> {
     add_task(shared, "failed").await?;
     add_task_to_group(shared, "sleep 60", "test_2").await?;
     add_task(shared, "ls").await?;
-    wait_for_task_condition(shared, 2, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 2, Task::is_running).await?;
 
     // Reset all groups of the daemon
-    send_message(
+    send_request(
         shared,
-        ResetMessage {
+        ResetRequest {
             target: ResetTarget::All,
         },
     )
@@ -60,12 +59,12 @@ async fn test_reset_single_group() -> Result<()> {
     add_task(shared, "failed").await?;
     add_task_to_group(shared, "sleep 60", "test_2").await?;
     add_task_to_group(shared, "sleep 60", "test_3").await?;
-    wait_for_task_condition(shared, 2, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 2, Task::is_running).await?;
 
     // Reset only the test_2 of the daemon.
-    send_message(
+    send_request(
         shared,
-        ResetMessage {
+        ResetRequest {
             target: ResetTarget::Groups(vec!["test_2".to_string()]),
         },
     )
@@ -102,12 +101,12 @@ async fn test_reset_multiple_groups() -> Result<()> {
     add_task(shared, "failed").await?;
     add_task_to_group(shared, "sleep 60", "test_2").await?;
     add_task_to_group(shared, "sleep 60", "test_3").await?;
-    wait_for_task_condition(shared, 2, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 2, Task::is_running).await?;
 
     // Reset only the test_2 of the daemon.
-    send_message(
+    send_request(
         shared,
-        ResetMessage {
+        ResetRequest {
             target: ResetTarget::Groups(vec!["test_2".to_string(), "test_3".to_string()]),
         },
     )

@@ -1,12 +1,9 @@
 use std::collections::HashMap;
 
-use anyhow::Result;
 use assert_matches::assert_matches;
+use pueue_lib::{message::*, task::*};
 
-use pueue_lib::network::message::*;
-use pueue_lib::task::*;
-
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// Test that using aliases when adding task normally works.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -22,7 +19,7 @@ async fn test_add_with_alias() -> Result<()> {
     assert_success(add_task(shared, "non_existing_cmd test").await?);
 
     // Wait until the task finished and get state
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     let task = get_task(shared, 0).await?;
 
@@ -56,7 +53,7 @@ async fn test_restart_with_alias() -> Result<()> {
 
     // Add a task whose command that should fail and wait for it to finish.
     assert_success(add_task(shared, "non_existing_cmd test").await?);
-    let task = wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    let task = wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     // Ensure the command hasn't been mutated and the task failed.
     assert_eq!(task.command, "non_existing_cmd test");
@@ -75,10 +72,10 @@ async fn test_restart_with_alias() -> Result<()> {
     create_test_alias_file(daemon.tempdir.path(), aliases)?;
 
     // Restart the task while editing its command.
-    let message = RestartMessage {
+    let message = RestartRequest {
         tasks: vec![TaskToRestart {
             task_id: 0,
-            command: "replaced_cmd test".to_string(),
+            original_command: "replaced_cmd test".to_string(),
             path: task.path,
             label: task.label,
             priority: task.priority,
@@ -86,8 +83,8 @@ async fn test_restart_with_alias() -> Result<()> {
         start_immediately: true,
         stashed: false,
     };
-    send_message(shared, message).await?;
-    let task = wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    send_request(shared, message).await?;
+    let task = wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     // The task finished successfully and its command has replaced the alias.
     assert_eq!(task.original_command, "replaced_cmd test");

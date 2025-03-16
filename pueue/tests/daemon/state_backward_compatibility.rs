@@ -1,11 +1,10 @@
-use std::fs::File;
-use std::io::prelude::*;
+use std::{fs::File, io::prelude::*};
 
-use anyhow::{Context, Result};
-use pueue::daemon::state_helper::restore_state;
+use pueue::daemon::internal_state::state::InternalState;
+use pueue_lib::Settings;
 use tempfile::TempDir;
 
-use pueue_lib::settings::Settings;
+use crate::internal_prelude::*;
 
 /// 4.0.0 introduced numerous breaking changes.
 /// From here on, we now aim to once again have full backward compatibility.
@@ -22,18 +21,19 @@ fn test_restore_from_old_state() -> Result<()> {
     let old_state = include_str!("data/v4.0.0_state.json");
 
     let temp_dir = TempDir::new()?;
-    let temp_path = temp_dir.path();
+    let temp_path = temp_dir.path().to_path_buf();
 
     // Open new file and write old state to it.
-    let temp_state_path = temp_dir.path().join("state.json");
+    let temp_state_path = temp_path.join("state.json");
     let mut file = File::create(temp_state_path)?;
     file.write_all(old_state.as_bytes())?;
 
     let mut settings = Settings::default();
-    settings.shared.pueue_directory = Some(temp_path.to_path_buf());
+    settings.shared.pueue_directory = Some(temp_path);
+    debug!("{settings:#?}");
 
-    let state = restore_state(&settings.shared.pueue_directory())
-        .context("Failed to restore state in test")?;
+    let state =
+        InternalState::restore_state(&settings).context("Failed to restore state in test")?;
 
     assert!(state.is_some());
 

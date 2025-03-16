@@ -1,17 +1,12 @@
-use pueue_lib::failure_msg;
-use pueue_lib::network::message::*;
-use pueue_lib::settings::Settings;
-use pueue_lib::state::SharedState;
-use pueue_lib::task::TaskStatus;
+use pueue_lib::{Settings, TaskStatus, failure_msg, message::*};
 
 use super::ok_or_failure_message;
-use crate::daemon::state_helper::save_state;
-use crate::ok_or_save_state_failure;
+use crate::{daemon::internal_state::SharedState, ok_or_save_state_failure};
 
 /// Invoked when calling `pueue switch`.
 /// Switch the position of two tasks in the upcoming queue.
 /// We have to ensure that those tasks are either `Queued` or `Stashed`
-pub fn switch(settings: &Settings, state: &SharedState, message: SwitchMessage) -> Message {
+pub fn switch(settings: &Settings, state: &SharedState, message: SwitchRequest) -> Response {
     let mut state = state.lock().unwrap();
 
     let task_ids = [message.task_id_1, message.task_id_2];
@@ -32,8 +27,8 @@ pub fn switch(settings: &Settings, state: &SharedState, message: SwitchMessage) 
     }
 
     // Get the tasks. Expect them to be there, since we found no mismatch
-    let mut first_task = state.tasks.remove(&task_ids[0]).unwrap();
-    let mut second_task = state.tasks.remove(&task_ids[1]).unwrap();
+    let mut first_task = state.tasks_mut().remove(&task_ids[0]).unwrap();
+    let mut second_task = state.tasks_mut().remove(&task_ids[1]).unwrap();
 
     // Switch task ids
     let first_id = first_task.id;
@@ -42,10 +37,10 @@ pub fn switch(settings: &Settings, state: &SharedState, message: SwitchMessage) 
     second_task.id = first_id;
 
     // Put tasks back in again
-    state.tasks.insert(first_task.id, first_task);
-    state.tasks.insert(second_task.id, second_task);
+    state.tasks_mut().insert(first_task.id, first_task);
+    state.tasks_mut().insert(second_task.id, second_task);
 
-    for (_, task) in state.tasks.iter_mut() {
+    for (_, task) in state.tasks_mut().iter_mut() {
         // If the task depends on both, we can just keep it as it is.
         if task.dependencies.contains(&first_id) && task.dependencies.contains(&second_id) {
             continue;
@@ -61,8 +56,8 @@ pub fn switch(settings: &Settings, state: &SharedState, message: SwitchMessage) 
         }
     }
 
-    ok_or_save_state_failure!(save_state(&state, settings));
-    create_success_message("Tasks have been switched")
+    ok_or_save_state_failure!(state.save(settings));
+    create_success_response("Tasks have been switched")
 }
 
 #[cfg(test)]
@@ -70,11 +65,10 @@ mod tests {
     use pretty_assertions::assert_eq;
     use tempfile::TempDir;
 
-    use super::super::fixtures::*;
-    use super::*;
+    use super::{super::fixtures::*, *};
 
-    fn get_message(task_id_1: usize, task_id_2: usize) -> SwitchMessage {
-        SwitchMessage {
+    fn get_message(task_id_1: usize, task_id_2: usize) -> SwitchRequest {
+        SwitchRequest {
             task_id_1,
             task_id_2,
         }
@@ -118,17 +112,17 @@ mod tests {
     fn switch_normal() {
         let (state, settings, _tempdir) = get_test_state();
 
-        let message = switch(&settings, &state, get_message(1, 2));
+        let response = switch(&settings, &state, get_message(1, 2));
 
-        // Return message is correct
-        assert!(matches!(message, Message::Success(_)));
-        if let Message::Success(text) = message {
+        // Response is correct
+        assert!(matches!(response, Response::Success(_)));
+        if let Response::Success(text) = response {
             assert_eq!(text, "Tasks have been switched");
         };
 
         let state = state.lock().unwrap();
-        assert_eq!(state.tasks.get(&1).unwrap().command, "2");
-        assert_eq!(state.tasks.get(&2).unwrap().command, "1");
+        assert_eq!(state.tasks().get(&1).unwrap().command, "2");
+        assert_eq!(state.tasks().get(&2).unwrap().command, "1");
     }
 
     #[test]
@@ -136,11 +130,11 @@ mod tests {
     fn switch_task_with_itself() {
         let (state, settings, _tempdir) = get_test_state();
 
-        let message = switch(&settings, &state, get_message(1, 1));
+        let response = switch(&settings, &state, get_message(1, 1));
 
-        // Return message is correct
-        assert!(matches!(message, Message::Failure(_)));
-        if let Message::Failure(text) = message {
+        // Response is correct
+        assert!(matches!(response, Response::Failure(_)));
+        if let Response::Failure(text) = response {
             assert_eq!(text, "You cannot switch a task with itself.");
         };
     }
@@ -154,7 +148,7 @@ mod tests {
         switch(&settings, &state, get_message(0, 3));
 
         let state = state.lock().unwrap();
-        assert_eq!(state.tasks.get(&4).unwrap().dependencies, vec![0, 3]);
+        assert_eq!(state.tasks().get(&4).unwrap().dependencies, vec![0, 3]);
     }
 
     #[test]
@@ -166,8 +160,8 @@ mod tests {
         switch(&settings, &state, get_message(1, 2));
 
         let state = state.lock().unwrap();
-        assert_eq!(state.tasks.get(&5).unwrap().dependencies, vec![2]);
-        assert_eq!(state.tasks.get(&6).unwrap().dependencies, vec![1, 3]);
+        assert_eq!(state.tasks().get(&5).unwrap().dependencies, vec![2]);
+        assert_eq!(state.tasks().get(&6).unwrap().dependencies, vec![1, 3]);
     }
 
     #[test]
@@ -188,11 +182,11 @@ mod tests {
         ];
 
         for ids in combinations {
-            let message = switch(&settings, &state, get_message(ids.0, ids.1));
+            let response = switch(&settings, &state, get_message(ids.0, ids.1));
 
-            // Assert, that we get a Failure message with the correct text.
-            assert!(matches!(message, Message::Failure(_)));
-            if let Message::Failure(text) = message {
+            // Assert, that we get a failure with the correct text.
+            assert!(matches!(response, Response::Failure(_)));
+            if let Response::Failure(text) = response {
                 assert_eq!(text, "Tasks have to be either queued or stashed.");
             };
         }

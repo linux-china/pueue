@@ -1,19 +1,14 @@
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
-use std::process::Child;
+use std::{fs::File, io::Read, path::Path, process::Child};
 
-use anyhow::{anyhow, bail, Context, Result};
-use pueue_lib::network::message::*;
-use pueue_lib::settings::*;
+use pueue_lib::{message::*, settings::*};
 
 use super::*;
 
 /// Send the Shutdown message to the test daemon.
-pub async fn shutdown_daemon(shared: &Shared) -> Result<Message> {
-    let message = Shutdown::Graceful;
+pub async fn shutdown_daemon(shared: &Shared) -> Result<Response> {
+    let message = ShutdownRequest::Graceful;
 
-    send_message(shared, message)
+    send_request(shared, message)
         .await
         .context("Failed to send Shutdown message")
 }
@@ -49,7 +44,7 @@ pub async fn get_pid(pid_path: &Path) -> Result<i32> {
 
         let pid = content
             .parse::<i32>()
-            .map_err(|_| anyhow!("Couldn't parse value: {content}"))?;
+            .map_err(|_| eyre!("Couldn't parse value: {content}"))?;
         return Ok(pid);
     }
 

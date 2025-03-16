@@ -1,12 +1,12 @@
-use std::fs::read_to_string;
-use std::fs::File;
-use std::path::Path;
+use std::{
+    fs::{File, read_to_string},
+    path::Path,
+};
 
-use anyhow::{bail, Context, Result};
-use pueue_lib::network::message::*;
+use pueue_lib::{Task, message::*};
 use tempfile::TempDir;
 
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// This function creates files `[1-20]` in the specified directory.
 /// The return value is the expected output.
@@ -60,7 +60,7 @@ async fn test_full_log() -> Result<()> {
     // Add a task that lists those files and wait for it to finish.
     let command = format!("ls {tempdir_path:?}");
     assert_success(add_task(shared, &command).await?);
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     // Request all log lines
     let output = get_task_log(shared, 0, None).await?;
@@ -86,7 +86,7 @@ async fn test_partial_log() -> Result<()> {
     // Add a task that lists those files and wait for it to finish.
     let command = format!("ls {tempdir_path:?}");
     assert_success(add_task(shared, &command).await?);
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     // Debug output to see what the file actually looks like:
     let real_log_path = shared.pueue_directory().join("task_logs").join("0.log");
@@ -94,15 +94,15 @@ async fn test_partial_log() -> Result<()> {
     println!("Actual log file contents: \n{content}");
 
     // Request a partial log for task 0
-    let log_message = LogRequestMessage {
+    let log_message = LogRequest {
         tasks: TaskSelection::TaskIds(vec![0]),
         send_logs: true,
         lines: Some(5),
     };
-    let response = send_message(shared, Message::Log(log_message)).await?;
+    let response = send_request(shared, Request::Log(log_message)).await?;
     let logs = match response {
-        Message::LogResponse(logs) => logs,
-        _ => bail!("Received non LogResponse: {:#?}", response),
+        Response::Log(logs) => logs,
+        _ => bail!("Received non Log Response: {:#?}", response),
     };
 
     // Get the received output
@@ -110,7 +110,7 @@ async fn test_partial_log() -> Result<()> {
     let output = logs
         .output
         .clone()
-        .context("Didn't find output on TaskLogMessage")?;
+        .ok_or(eyre!("Didn't find output on TaskLogResponse"))?;
     let output = decompress_log(output)?;
 
     // Make sure it's the same
@@ -128,18 +128,18 @@ async fn test_correct_log_order() -> Result<()> {
     // Add a task that lists those files and wait for it to finish.
     let command = "echo 'test' && echo 'error' && echo 'test'";
     assert_success(add_task(shared, command).await?);
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     // Request all log lines
-    let log_message = LogRequestMessage {
+    let log_message = LogRequest {
         tasks: TaskSelection::TaskIds(vec![0]),
         send_logs: true,
         lines: None,
     };
-    let response = send_message(shared, Message::Log(log_message)).await?;
+    let response = send_request(shared, Request::Log(log_message)).await?;
     let logs = match response {
-        Message::LogResponse(logs) => logs,
-        _ => bail!("Received non LogResponse: {:#?}", response),
+        Response::Log(logs) => logs,
+        _ => bail!("Received non Log Response: {:#?}", response),
     };
 
     // Get the received output
@@ -147,7 +147,7 @@ async fn test_correct_log_order() -> Result<()> {
     let output = logs
         .output
         .clone()
-        .context("Didn't find output on TaskLogMessage")?;
+        .ok_or(eyre!("Didn't find output on TaskLogResponse"))?;
     let output = decompress_log(output)?;
 
     // Make sure it's the same
@@ -171,18 +171,18 @@ async fn logs_of_group() -> Result<()> {
     assert_success(add_task_to_group(shared, command, "test_2").await?);
 
     // Wait for both to finish
-    wait_for_task_condition(shared, 1, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 1, Task::is_done).await?;
 
     // Request the task's logs.
-    let message = LogRequestMessage {
+    let message = LogRequest {
         tasks: TaskSelection::Group("test_2".to_string()),
         send_logs: true,
         lines: None,
     };
-    let response = send_message(shared, message).await?;
+    let response = send_request(shared, message).await?;
     let logs = match response {
-        Message::LogResponse(logs) => logs,
-        _ => bail!("Didn't get log response response in get_state"),
+        Response::Log(logs) => logs,
+        _ => bail!("Didn't get log response in get_state"),
     };
 
     assert_eq!(logs.len(), 1, "Sould only receive a single log entry.");
@@ -205,18 +205,18 @@ async fn logs_for_all() -> Result<()> {
     assert_success(add_task_to_group(shared, command, "test_2").await?);
 
     // Wait for both to finish
-    wait_for_task_condition(shared, 1, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 1, Task::is_done).await?;
 
     // Request the task's logs.
-    let message = LogRequestMessage {
+    let message = LogRequest {
         tasks: TaskSelection::All,
         send_logs: true,
         lines: None,
     };
-    let response = send_message(shared, message).await?;
+    let response = send_request(shared, message).await?;
     let logs = match response {
-        Message::LogResponse(logs) => logs,
-        _ => bail!("Didn't get log response response in get_state"),
+        Response::Log(logs) => logs,
+        _ => bail!("Didn't get log response in get_state"),
     };
 
     assert_eq!(logs.len(), 2, "Sould receive all log entries.");

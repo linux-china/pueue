@@ -1,14 +1,9 @@
 use std::io::Read;
 
-use anyhow::{Context, Result};
+use pueue_lib::{TaskResult, TaskStatus, log::get_log_file_handle};
 use rstest::rstest;
 
-use pueue_lib::{
-    log::get_log_file_handle,
-    task::{TaskResult, TaskStatus},
-};
-
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// Make sure a task that isn't able to spawn, prints out an error message to the task's log file.
 #[rstest]

@@ -1,30 +1,33 @@
 //! This module contains helper functions, which are used by both, the client and daemon tests.
-use ::log::{warn, LevelFilter};
-use anyhow::Result;
-use simplelog::{Config, ConfigBuilder, TermLogger, TerminalMode};
-use tokio::io::{self, AsyncWriteExt};
+use std::process::Output;
 
 pub use pueue_lib::state::PUEUE_DEFAULT_GROUP;
+use tokio::io::{self, AsyncWriteExt};
+
+use crate::internal_prelude::*;
 
 mod asserts;
 mod daemon;
 mod factories;
 mod fixtures;
+mod lockfile;
 mod log;
 mod network;
 mod state;
 mod task;
 mod wait;
 
-pub use self::log::*;
 pub use asserts::*;
 pub use daemon::*;
 pub use factories::*;
 pub use fixtures::*;
+pub use lockfile::*;
 pub use network::*;
 pub use state::*;
 pub use task::*;
 pub use wait::*;
+
+pub use self::log::*;
 
 // Global acceptable test timeout
 const TIMEOUT: u64 = 5000;
@@ -32,26 +35,8 @@ const TIMEOUT: u64 = 5000;
 /// Use this function to enable log output for in-runtime daemon output.
 #[allow(dead_code)]
 pub fn enable_logger() {
-    let level = LevelFilter::Debug;
-
-    // Try to initialize the logger with the timezone set to the Local time of the machine.
-    let mut builder = ConfigBuilder::new();
-    let logger_config = match builder.set_time_offset_to_local() {
-        Err(_) => {
-            warn!("Failed to determine the local time of this machine. Fallback to UTC.");
-            Config::default()
-        }
-        Ok(builder) => builder.build(),
-    };
-
-    // Init a terminal logger
-    TermLogger::init(
-        level,
-        logger_config.clone(),
-        TerminalMode::Stderr,
-        simplelog::ColorChoice::Auto,
-    )
-    .unwrap()
+    pueue::tracing::install_tracing(3)
+        .expect("Couldn't init tracing for test, have you initialised tracing twice?");
 }
 
 /// A helper function to sleep for ms time.
@@ -77,4 +62,44 @@ pub async fn async_println(out: &str) -> Result<()> {
     stdout.flush().await?;
 
     Ok(())
+}
+
+/// Take some process output and simply print it.
+#[allow(dead_code)]
+pub fn print_output(output: &Output) -> Result<()> {
+    let stdout = output.stdout.clone();
+    let stderr = output.stderr.clone();
+    let out = String::from_utf8(stdout).context("Got invalid utf8 as stdout!")?;
+    let err = String::from_utf8(stderr).context("Got invalid utf8 as stderr!")?;
+
+    println!("Stdout:\n{out}");
+    println!("\nStderr:\n{err}");
+
+    Ok(())
+}
+
+pub trait CommandOutcome {
+    fn success(self) -> Result<Output>;
+
+    fn failure(self) -> Result<Output>;
+}
+
+impl CommandOutcome for Output {
+    fn success(self) -> Result<Output> {
+        if !self.status.success() {
+            print_output(&self)?;
+            bail!("Command failed, see log output.")
+        }
+
+        Ok(self)
+    }
+
+    fn failure(self) -> Result<Output> {
+        if self.status.success() {
+            print_output(&self)?;
+            bail!("Command succeeded, even though it should've failed. See log output.")
+        }
+
+        Ok(self)
+    }
 }

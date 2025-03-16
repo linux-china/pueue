@@ -1,9 +1,7 @@
-use anyhow::Result;
 use assert_matches::assert_matches;
+use pueue_lib::{message::ParallelRequest, task::*};
 
-use pueue_lib::{network::message::ParallelMessage, task::*};
-
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// Test that multiple groups with multiple slots work.
 ///
@@ -24,7 +22,7 @@ async fn test_parallel_tasks() -> Result<()> {
 
     // Ensure those three tasks are started.
     for task_id in 0..3 {
-        wait_for_task_condition(shared, task_id, |task| task.is_running()).await?;
+        wait_for_task_condition(shared, task_id, Task::is_running).await?;
     }
 
     // Tasks 4-5 should still be queued
@@ -49,7 +47,7 @@ async fn test_parallel_tasks() -> Result<()> {
 
     // Ensure only two tasks are started.
     for task_id in 5..7 {
-        wait_for_task_condition(shared, task_id, |task| task.is_running()).await?;
+        wait_for_task_condition(shared, task_id, Task::is_running).await?;
     }
 
     // Tasks 8-10 should still be queued
@@ -79,18 +77,18 @@ async fn test_unlimited_parallel_tasks() -> Result<()> {
         assert_success(add_task_to_group(shared, "sleep 600", "testgroup").await?);
     }
     // Ensure the first tasks is started.
-    wait_for_task_condition(shared, 0, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 0, Task::is_running).await?;
 
     // Update the parallel limit of the group to 0
-    let message = ParallelMessage {
+    let message = ParallelRequest {
         group: "testgroup".to_string(),
         parallel_tasks: 0,
     };
-    assert_success(send_message(shared, message).await?);
+    assert_success(send_request(shared, message).await?);
 
     // Make sure all other tasks are started as well in quick succession.
     for task_id in 1..10 {
-        wait_for_task_condition(shared, task_id, |task| task.is_running()).await?;
+        wait_for_task_condition(shared, task_id, Task::is_running).await?;
     }
 
     Ok(())

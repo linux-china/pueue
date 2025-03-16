@@ -1,19 +1,20 @@
-use pueue_lib::state::SharedState;
-use pueue_lib::success_msg;
-use pueue_lib::{network::message::*, settings::Settings};
+use pueue_lib::{Settings, Task, message::*, success_msg};
 
-use crate::daemon::network::response_helper::{ensure_group_exists, task_action_response_helper};
-use crate::daemon::process_handler;
+use crate::daemon::{
+    internal_state::SharedState,
+    network::response_helper::{ensure_group_exists, task_action_response_helper},
+    process_handler,
+};
 
 /// Invoked when calling `pueue kill`.
 /// Forward the kill message to the task handler, which then kills the process.
-pub fn kill(settings: &Settings, state: &SharedState, message: KillMessage) -> Message {
+pub fn kill(settings: &Settings, state: &SharedState, message: KillRequest) -> Response {
     let mut state = state.lock().unwrap();
 
     // If a group is selected, make sure it exists.
     if let TaskSelection::Group(group) = &message.tasks {
-        if let Err(message) = ensure_group_exists(&mut state, group) {
-            return message;
+        if let Err(response) = ensure_group_exists(&mut state, group) {
+            return response;
         }
     }
 
@@ -23,7 +24,7 @@ pub fn kill(settings: &Settings, state: &SharedState, message: KillMessage) -> M
             TaskSelection::TaskIds(task_ids) => task_action_response_helper(
                 "Tasks are being killed",
                 task_ids.clone(),
-                |task| task.is_running(),
+                Task::is_running,
                 &state,
             ),
             TaskSelection::Group(group) => {
@@ -38,7 +39,7 @@ pub fn kill(settings: &Settings, state: &SharedState, message: KillMessage) -> M
             TaskSelection::TaskIds(task_ids) => task_action_response_helper(
                 "Tasks are being killed",
                 task_ids.clone(),
-                |task| task.is_running(),
+                Task::is_running,
                 &state,
             ),
             TaskSelection::Group(group) => success_msg!(
@@ -51,7 +52,7 @@ pub fn kill(settings: &Settings, state: &SharedState, message: KillMessage) -> M
     };
 
     // Actually execute the command
-    if let Message::Success(_) = response {
+    if let Response::Success(_) = response {
         process_handler::kill::kill(settings, &mut state, message.tasks, true, message.signal);
     }
 

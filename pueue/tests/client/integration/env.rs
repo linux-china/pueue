@@ -1,6 +1,6 @@
-use anyhow::Result;
+use pueue_lib::Task;
 
-use crate::client::helper::*;
+use crate::{client::helper::*, internal_prelude::*};
 
 /// Set an environment variable and make sure it's there afterwards.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -16,7 +16,7 @@ async fn set_environment() -> Result<()> {
 
     // Now start the command and wait for it to finish
     run_client_command(shared, &["enqueue", "0"])?;
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     let state = get_state(shared).await?;
     println!("{:#?}", state.tasks[&0].envs);
@@ -46,7 +46,7 @@ async fn unset_environment() -> Result<()> {
 
     // Now start the command and wait for it to finish
     run_client_command(shared, &["enqueue", "0"])?;
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     let state = get_state(shared).await?;
     println!("{:#?}", state.tasks[&0].envs);

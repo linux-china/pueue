@@ -1,32 +1,48 @@
 # The following is the shared configuration for both pueue and its lib
 [workspace]
 members = ["pueue", "pueue_lib"]
-resolver = "2"
+resolver = "3"
 
 [workspace.package]
 authors = ["Arne Beer <contact@arne.beer>"]
+edition = "2024"
 homepage = "https://github.com/nukesor/pueue"
 repository = "https://github.com/nukesor/pueue"
 license = "MIT OR Apache-2.0"
-edition = "2021"
-rust-version = "1.70"
+rust-version = "1.85"
 
 [workspace.dependencies]
-# Chrono version is hard pinned to a specific version.
-# See https://github.com/Nukesor/pueue/issues/534
-anyhow = "1"
+async-trait = "0.1"
 better-panic = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
+ciborium = { version = "0.2", features = ["std"] }
+color-eyre = "0.6.3"
 command-group = "5"
-handlebars = "5.1"
-log = "0.4"
+handlebars = "6.3"
 pretty_assertions = "1"
+rustls = { version = "0.23", default-features = false, features = [
+    "logging",
+    "ring",
+    "std",
+    "tls12",
+] }
+rustls-pemfile = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 snap = "1.1"
-strum = { version = "0.26", features = ["derive"] }
-tokio = { version = "1.36", features = ["io-std", "rt-multi-thread", "time"] }
+strum = { version = "0.27", features = ["derive"] }
+tokio = { version = "1.43", features = ["io-std", "rt-multi-thread", "time"] }
+tokio-rustls = { version = "0.26", default-features = false }
+tracing = "0.1.41"
+tracing-error = "0.2.1"
+tracing-subscriber = { version = "0.3.19", features = [
+    "chrono",
+    "env-filter",
+    "fmt",
+    "local-time",
+] }
+
 
 [profile.release]
 codegen-units = 1

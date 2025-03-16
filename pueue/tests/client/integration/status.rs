@@ -1,8 +1,6 @@
-use anyhow::Context;
-use anyhow::Result;
-use pueue_lib::state::State;
+use pueue_lib::{State, Task};
 
-use crate::client::helper::*;
+use crate::{client::helper::*, internal_prelude::*};
 
 /// Test that the normal status command works as expected.
 /// Calling `pueue` without any subcommand is equivalent of using `status`.
@@ -29,7 +27,7 @@ async fn full() -> Result<()> {
     let output = run_status_without_path(shared, &[]).await?;
 
     let context = get_task_context(&daemon.settings).await?;
-    assert_template_matches("status__full", output.stdout, context)?;
+    assert_template_matches("status__full", output, context)?;
 
     Ok(())
 }
@@ -42,12 +40,12 @@ async fn full() -> Result<()> {
 //
 //    // Add a task and wait until it finishes.
 //    assert_success(add_task(shared, "ls").await?);
-//    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+//    wait_for_task_condition(shared, 0, Task::is_done).await?;
 //
 //    let output = run_status_without_path(shared, &["--color", "always"]).await?;
 //
 //    let context = get_task_context(&daemon.settings).await?;
-//    assert_stdout_matches("status__colored", output.stdout, context)?;
+//    assert_stdout_matches("status__colored", output, context)?;
 //
 //    Ok(())
 //}
@@ -67,13 +65,13 @@ async fn single_group() -> Result<()> {
     run_client_command(shared, &["add", "--stashed", "ls"])?;
 
     // Make sure the first task finished.
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     let output = run_status_without_path(shared, &["--group", "testgroup"]).await?;
 
     // The output should only show the first task
     let context = get_task_context(&daemon.settings).await?;
-    assert_template_matches("status__single_group", output.stdout, context)?;
+    assert_template_matches("status__single_group", output, context)?;
 
     Ok(())
 }
@@ -94,13 +92,13 @@ async fn multiple_groups() -> Result<()> {
     run_client_command(shared, &["add", "--group", "testgroup2", "ls"])?;
 
     // Make sure the second task finished.
-    wait_for_task_condition(shared, 1, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 1, Task::is_done).await?;
 
     let output = run_status_without_path(shared, &[]).await?;
 
     // The output should show multiple groups
     let context = get_task_context(&daemon.settings).await?;
-    assert_template_matches("status__multiple_groups", output.stdout, context)?;
+    assert_template_matches("status__multiple_groups", output, context)?;
 
     Ok(())
 }
@@ -113,7 +111,7 @@ async fn json() -> Result<()> {
 
     // Add a task and wait until it finishes.
     assert_success(add_task(shared, "ls").await?);
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     let output = run_client_command(shared, &["status", "--json"])?;
 

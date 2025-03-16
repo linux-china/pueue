@@ -1,13 +1,16 @@
-use log::{error, info, warn};
+use pueue_lib::{
+    GroupStatus, Settings, Task, TaskStatus,
+    message::{Signal, TaskSelection},
+};
 
-use pueue_lib::network::message::{Signal, TaskSelection};
-use pueue_lib::process_helper::*;
-use pueue_lib::settings::Settings;
-use pueue_lib::state::GroupStatus;
-use pueue_lib::task::TaskStatus;
+
+use crate::{
+    daemon::internal_state::state::LockedState,
+    internal_prelude::*,
+    ok_or_shutdown,
+    process_helper::{kill_child, send_signal_to_child, signal_from_internal},
+};
 use crate::daemon::network::nats::PueuedWorker;
-use crate::daemon::state_helper::{save_state, LockedState};
-use crate::ok_or_shutdown;
 
 /// Kill specific tasks or groups.
 ///
@@ -43,13 +46,13 @@ pub fn kill(
         TaskSelection::TaskIds(task_ids) => task_ids,
         TaskSelection::Group(group_name) => {
             // Ensure that a given group exists. (Might not happen due to concurrency)
-            if !state.groups.contains_key(&group_name) {
+            if !state.groups().contains_key(&group_name) {
                 return;
             };
 
             // Check whether the group should be paused before killing the tasks.
             if should_pause_group(state, issued_by_user, &group_name) {
-                let group = state.groups.get_mut(&group_name).unwrap();
+                let group = state.groups_mut().get_mut(&group_name).unwrap();
                 group.status = GroupStatus::Paused;
             }
 
@@ -69,7 +72,7 @@ pub fn kill(
         }
         TaskSelection::All => {
             // Pause all groups, if applicable
-            let group_names: Vec<String> = state.groups.keys().cloned().collect();
+            let group_names: Vec<String> = state.groups().keys().cloned().collect();
             for group_name in group_names {
                 if should_pause_group(state, issued_by_user, &group_name) {
                     state.set_status_for_all_groups(GroupStatus::Paused);
@@ -89,7 +92,7 @@ pub fn kill(
         }
     }
 
-    ok_or_shutdown!(settings, state, save_state(state, settings));
+    ok_or_shutdown!(settings, state, state.save(settings));
 }
 
 /// Send a signal to a specific child process.
@@ -104,7 +107,7 @@ pub fn send_internal_signal(state: &mut LockedState, task_id: usize, signal: Sig
         }
     };
 
-    if let Err(err) = send_signal_to_child(child, signal) {
+    if let Err(err) = send_signal_to_child(child, signal_from_internal(signal)) {
         warn!("Failed to send signal to task {task_id} with error: {err}");
     };
 }
@@ -132,7 +135,7 @@ fn should_pause_group(state: &LockedState, issued_by_user: bool, group: &str) ->
         return false;
     }
 
-    // Check if there're tasks that're queued or enqueued.
-    let filtered_tasks = state.filter_tasks_of_group(|task| task.is_queued(), group);
+    // Check if there're tasks that're queued or scheduled to be enqueued.
+    let filtered_tasks = state.filter_tasks_of_group(Task::is_queued, group);
     !filtered_tasks.matching_ids.is_empty()
 }

@@ -1,11 +1,10 @@
 use std::collections::{BTreeMap, HashMap};
 
-use anyhow::{Context, Result};
-use pueue_lib::task::Task;
+use pueue_lib::Task;
 use rstest::rstest;
 use serde::Deserialize;
 
-use crate::client::helper::*;
+use crate::{client::helper::*, internal_prelude::*};
 
 /// Test that the `log` command works for both:
 /// - The log being streamed by the daemon.
@@ -28,12 +27,12 @@ async fn read(#[case] read_local_logs: bool) -> Result<()> {
 
     // Add a task and wait until it finishes.
     assert_success(add_task(shared, "echo test").await?);
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     let output = run_client_command(shared, &["log"])?;
 
     let context = get_task_context(&daemon.settings).await?;
-    assert_template_matches("log__default", output.stdout, context)?;
+    assert_template_matches("log__default", output, context)?;
 
     Ok(())
 }
@@ -59,12 +58,12 @@ async fn read_truncated(#[case] read_local_logs: bool) -> Result<()> {
 
     // Add a task and wait until it finishes.
     assert_success(add_task(shared, "echo '1\n2\n3\n4\n5\n6\n7\n8\n9\n10'").await?);
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     let output = run_client_command(shared, &["log", "--lines=5"])?;
 
     let context = get_task_context(&daemon.settings).await?;
-    assert_template_matches("log__last_lines", output.stdout, context)?;
+    assert_template_matches("log__last_lines", output, context)?;
 
     Ok(())
 }
@@ -77,12 +76,12 @@ async fn task_with_label() -> Result<()> {
 
     // Add a task and wait until it finishes.
     run_client_command(shared, &["add", "--label", "test_label", "echo test"])?;
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     let output = run_client_command(shared, &["log"])?;
 
     let context = get_task_context(&daemon.settings).await?;
-    assert_template_matches("log__with_label", output.stdout, context)?;
+    assert_template_matches("log__with_label", output, context)?;
 
     Ok(())
 }
@@ -95,12 +94,12 @@ async fn colored() -> Result<()> {
 
     // Add a task and wait until it finishes.
     assert_success(add_task(shared, "echo test").await?);
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     let output = run_client_command(shared, &["--color", "always", "log"])?;
 
     let context = get_task_context(&daemon.settings).await?;
-    assert_template_matches("log__colored", output.stdout, context)?;
+    assert_template_matches("log__colored", output, context)?;
 
     Ok(())
 }
@@ -122,7 +121,7 @@ async fn json() -> Result<()> {
 
     // Add a task and wait until it finishes.
     assert_success(add_task(shared, "echo test").await?);
-    wait_for_task_condition(shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(shared, 0, Task::is_done).await?;
 
     let output = run_client_command(shared, &["log", "--json"])?;
 

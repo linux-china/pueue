@@ -3,15 +3,13 @@ use std::{
     process::{Child, Command, Stdio},
 };
 
-use anyhow::{bail, Context, Result};
-
 use assert_cmd::prelude::CommandCargoExt;
 use pueue_lib::{
-    settings::{Shared, PUEUE_CONFIG_PATH_ENV},
-    state::State,
+    State,
+    settings::{PUEUE_CONFIG_PATH_ENV, Shared},
 };
 
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// Spawn the daemon by calling the actual pueued binary.
 /// This is basically the same as the `standalone_daemon` logic, but it uses the

@@ -1,10 +1,9 @@
+//! Everything regarding Pueue's [Task]s.
 use std::{collections::HashMap, path::PathBuf};
 
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use strum::Display;
-
-use crate::state::PUEUE_DEFAULT_GROUP;
 
 /// This enum represents the status of the internal task handling of Pueue.
 /// They basically represent the internal task life-cycle.
@@ -54,8 +53,6 @@ pub enum TaskResult {
 }
 
 /// Representation of a task.
-/// start will be set the second the task starts processing.
-/// `result`, `output` and `end` won't be initialized, until the task has finished.
 #[derive(PartialEq, Eq, Clone, Deserialize, Serialize)]
 pub struct Task {
     pub id: usize,
@@ -98,25 +95,6 @@ impl Task {
         }
     }
 
-    /// A convenience function used to duplicate a task.
-    pub fn from_task(task: &Task) -> Task {
-        Task {
-            id: 0,
-            created_at: Local::now(),
-            original_command: task.original_command.clone(),
-            command: task.command.clone(),
-            path: task.path.clone(),
-            envs: task.envs.clone(),
-            group: task.group.clone(),
-            dependencies: Vec::new(),
-            priority: 0,
-            label: task.label.clone(),
-            status: TaskStatus::Queued {
-                enqueued_at: Local::now(),
-            },
-        }
-    }
-
     pub fn start_and_end(&self) -> (Option<DateTime<Local>>, Option<DateTime<Local>>) {
         match self.status {
             TaskStatus::Running { start, .. } => (Some(start), None),
@@ -132,6 +110,11 @@ impl Task {
             self.status,
             TaskStatus::Running { .. } | TaskStatus::Paused { .. }
         )
+    }
+
+    /// Whether the task is a running, but paused process managed by the TaskHandler.
+    pub fn is_paused(&self) -> bool {
+        matches!(self.status, TaskStatus::Paused { .. })
     }
 
     /// Whether the task's process finished.
@@ -164,15 +147,6 @@ impl Task {
                     enqueue_at: Some(_)
                 }
         )
-    }
-
-    /// Small convenience function to set the task's group to the default group.
-    pub fn set_default_group(&mut self) {
-        self.group = String::from(PUEUE_DEFAULT_GROUP);
-    }
-
-    pub fn is_in_default_group(&self) -> bool {
-        self.group.eq(PUEUE_DEFAULT_GROUP)
     }
 }
 

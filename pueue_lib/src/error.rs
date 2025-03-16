@@ -1,4 +1,8 @@
+//! Pueue-lib errors.
 use std::path::PathBuf;
+
+#[cfg(any(feature = "network", feature = "network_blocking"))]
+use ciborium::Value;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -18,8 +22,15 @@ pub enum Error {
     #[error("Couldn't deserialize message:\n{}", .0)]
     MessageDeserialization(String),
 
+    #[cfg(any(feature = "network", feature = "network_blocking"))]
+    #[error("Got unexpected but valid message. Are you up-to-date?:\n{:#?}", .0)]
+    UnexpectedPayload(Value),
+
     #[error("Couldn't serialize message:\n{}", .0)]
     MessageSerialization(String),
+
+    #[error("Requested message size of {} with only {} being allowed.", .0, .1)]
+    MessageTooBig(usize, usize),
 
     #[error("Error while reading configuration:\n{}", .0)]
     ConfigDeserialization(String),

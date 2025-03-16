@@ -4,13 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## \[4.0.0\] - unreleased
+## \[4.0.0\] - 2025-03-09
 
 This release aims to further improve Pueue and to rectify some old design decisions.
+Large portions of both the library and the executables' code have been refactored and the protocol has been reworked, which completely breaks backwards compatibility.
+
+Read the `Change` section for more details.
 
 ### Removing internal channel communication
 
-TLDR: Commands that start/stop/kill/pause tasks now only return when the task is actually started/stopped/killed/paused.
+TLDR: Commands that start/stop/pause tasks now only return when the task is actually started/stopped/paused.
+`kill`ing commands still takes a short while, as the process needs to be cleaned up properly.
 
 ---
 
@@ -29,7 +33,10 @@ Task editing was a bit tedious until recently.
 One could only edit a single task at a time and you had to specify which properties you wanted to add.
 Each property was then opened in a new `$EDITOR` session, which meant that users had to open and close editors up to four times to edit a single task.
 
-After a lot of consideration, a new way of editing tasks has been designed that allows simple and convenient editing of multiple tasks at once.
+After a lot of consideration, tasks editing has been redesigned, provoding two ways that allow simple and convenient editing of multiple tasks at once.
+
+#### File based approach
+
 For this, a temporary directory is created for every task to edit and a new file for every property, resulting in the following structure:
 
 ```
@@ -38,15 +45,39 @@ For this, a temporary directory is created for every task to edit and a new file
    │ * label
    │ * path
    └ * priority
+   📁 1/
+   │ * command
+   │ * label
+   │ * path
+   └ * priority
 ```
 
 You can then just navigate the resulting file structure and edit the properties you want in the editor of your choice.
+This solution is obviously flawed if your editor doesn't provide an in-editor file tree like `helix`.
 
-I'm aware that this might not be for everyone, so feedback is very much encouraged over [here](https://github.com/Nukesor/pueue/issues/553).
+This mode is enabled by setting `client.edit_mode` to `files`.
+
+#### Toml based approach
+
+In this mode, all tasks to be edited are serialized into a single `toml` file that's then opened in the editor of your choice.
+
+```toml
+[1]
+id = 1
+command = "ls"
+path = "/tmp"
+priority = 0
+```
+
+This mode is very convenient for editing simple tasks, but has the drawback that users need to know the TOML format and have to make sure to not mess up character escaping.
+For example, multi-line commands or commands that contain special/reserved characters in TOML will need special care.
+
+Based on some feedback, this mode is apparently the most asked for, so this is enabled by default.
+It can also be explicitly set via `client.edit_mode: "toml"`.
 
 ### Runtime invariants
 
-TLDR: A new task state representation has been introduced, that's significantly cleaner and fixes some bugs.
+TLDR: A new task state representation has been introduced, which is significantly cleaner and fixes some bugs.
 However, it breaks compatibility with old states, so ensure there are no important tasks in your queue before updating. You'll also need to recreate groups.
 
 ---
@@ -54,7 +85,7 @@ However, it breaks compatibility with old states, so ensure there are no importa
 Previously, various task-state related invariants were manually enforced during runtime. For example, a `Queued` task should not have a `start` or `enqueued_at` time set.
 Turns out, doing this manually is highly error-prone, as it is difficult to account for every state transition and ensure everything is set or cleaned up correctly.
 
-Fortunately, this issue can be addressed in a more elegant way in Rust using struct enums. This method enforces invariants via the type system at compile time.
+Fortunately, this issue can be addressed in a more elegant way by using Rust's struct enums. This method enforces invariants via the type system at compile time.
 Although the affected code became slightly more verbose (about 25% larger), it eliminated an entire class of bugs.
 During this refactoring, I discovered at least two instances where I had forgotten to clear a variable, leading to inconsistent state.
 
@@ -65,14 +96,21 @@ Upon updating Pueue and restarting the daemon, the previous state will be wiped,
 
 - **Breaking**: Refactor internal task state. Some task variables have been moved into the `TaskStatus` enum, which now enforces various invariants during compile time via the type system.
   Due to this, several subtle time related inconsistencies (task start/stop/enqueue times) have been fixed. [#556](https://github.com/Nukesor/pueue/pull/556) \
-  **Important: This completely breaks backwards compatibility, including previous state.**
+  **Important: This completely breaks pre v4.0 states.**
   **Important: The Pueue daemon needs to be restarted and the state will be wiped clean.**
 - **Breaking**: Streamlined `pueue log` parameters to behave the same way as `start`, `pause` or `kill`. [#509](https://github.com/Nukesor/pueue/issues/509)
 - **Breaking**: Remove the `--children` commandline flags, that have been deprecated and no longer serve any function since `v3.0.0`.
 - Send log output to `stderr` instead of `stdout` [#562](https://github.com/Nukesor/pueue/issues/562).
 - Change default log level from error to warning [#562](https://github.com/Nukesor/pueue/issues/562).
-- Bumped MSRV to 1.70.
+- Bumped MSRV to 1.85 and Rust edition to 2024.
 - **Breaking**: Redesigned task editing process [#553](https://github.com/Nukesor/pueue/issues/553).
+  Pueue now allows editing all properties a task in one editor session. There're two modes to do so: `toml` and `files`, which is configurable via the `client.edit_mode` settings field.
+- Revisited, fixed and cleaned up CLI help texts.
+- Print most of Pueue's info/log messages to `stderr`. Only keep useful stuff like json and task log output on `stdout`.
+- **Breaking**: Allow `--immediate` flag instead of `--start--immediately` on `pueue restart` for consistency with `pueue add`.
+- **Breaking**: Ported from `anyhow` to `color_eyre` for prettier log output.
+- **Breaking**: Switch `cbor` handling library, breaking backwards-compatible communication on a data format level.
+- **Breaking**: Switch protocol message representation, completely breaking backwards compatibility.
 
 ### Add
 
@@ -88,6 +126,13 @@ Upon updating Pueue and restarting the daemon, the previous state will be wiped,
 - Added Windows service on Windows to allow a true daemon experience. [#344](https://github.com/Nukesor/pueue/issues/344) [#567](https://github.com/Nukesor/pueue/pull/567)
 - Add `queued_count` and `stashed_count` to callback template variables. This allows users to fire callbacks when whole groups are finished. [#578](https://github.com/Nukesor/pueue/issues/578)
 - Add new subcommand to set or unset environment variables for tasks. [#503](https://github.com/Nukesor/pueue/issues/503)
+- Add `add --follow` flag that may be called in combination with `--immediate` [#592](https://github.com/Nukesor/pueue/issues/592)
+- Add option to save the state in compressed form. This can be toggled with the `daemon.compress_state_file` config file.
+  Preliminary testing shows significant compression ratios (up to x15), which helps with large states in embedded and I/O bound environments.
+  On my local machine with a state of 400 tasks, state file size **shrinks** from \~2MB to \~120KB and save time **increases** from \~8ms to \~20ms.
+  Due to the very repetitive nature of the state's data (mostly environment variables), the `gzip` compression algorithm with the `flate2` implementation has been chosen.
+  It shows similar compression rations to `zstd` on level `7`, which is more than enough and the dependency is significantly lighter than `zstd`.
+  `snappy`, which is already a dependency, has also been considered, but it has much worse compression ratios (~2MB -> ~300KB).
 
 ### Fixed
 
@@ -95,6 +140,11 @@ Upon updating Pueue and restarting the daemon, the previous state will be wiped,
 - Callback templating arguments were html escaped by accident. [#564](https://github.com/Nukesor/pueue/pull/564)
 - Print incompatible version warning info as a log message instead of plain stdout input, which broke json outputs [#562](https://github.com/Nukesor/pueue/issues/562).
 - Fixed `-d` daemon mode on Windows. [#344](https://github.com/Nukesor/pueue/issues/344)
+- Fixed a pueued crash when malformed secret exchange messages are sent by a connecting client [#619](https://github.com/Nukesor/pueue/issues/619).
+
+### Remove
+
+- `status-format` subcommand. This was a temporary workaround until the `status query` feature was finished, which is now the case.
 
 ## \[3.4.1\] - 2024-06-04
 
@@ -254,7 +304,7 @@ The test coverage and development tooling has never been better, the project con
     If you need more filtering capabilities, please create an issue or a PR :).
   - `limit [last|first] 10` limit the results that'll be shown.
   - `order_by [column] [asc|desc]` order by certain columns.
-  - For exact info on the syntax check the [syntax file](https://github.com/Nukesor/pueue/blob/main/client/query/syntax.pest).
+  - For exact info on the syntax check the [syntax file](https://github.com/Nukesor/pueue/blob/main/pueue/src/client/query/syntax.pest).
     I still have to write detailed docs on how to use it.
 - Show a hint when calling `pueue log` if the task output has been truncated. [#318](https://github.com/Nukesor/pueue/issues/318)
 - Add `Settings.shared.alias_file`, which allows to set the location of the `pueue_aliases.yml` file.
@@ -386,7 +436,7 @@ Also a huge thanks to all contributors that helped working on this version!
 - Allow to set the amount of parallel tasks at group creation by [Spyros Roum](https://github.com/SpyrosRoum) [#245](https://github.com/Nukesor/pueue/issues/249).
 - When calling `pueue` without a subcommand, the `status` command will be called by default [#247](https://github.com/Nukesor/pueue/issues/247).
 - Add the `--group` parameter to the `pueue clean` command [#248](https://github.com/Nukesor/pueue/issues/248).
-- Add `output` for a task's log output as template parameters for callbacks [#269](https://github.com/Nukesor/issues/269).
+- Add `output` for a task's log output as template parameters for callbacks [#269](https://github.com/Nukesor/pueue/issues/269).
 - Add `--lines` parameter to `pueue follow` to only show specified number of lines from stdout before following [#270](https://github.com/Nukesor/pueue/issues/270).
 - Notify the user if a task is added to a paused group [#265](https://github.com/Nukesor/pueue/issues/265).
 - Notify the user that when killing whole groups, those groups are also paused [#265](https://github.com/Nukesor/pueue/issues/265).
@@ -567,7 +617,7 @@ Overall, this resulted in sleaker und much better maintainable code. However, th
 ### Fixed
 
 - Remove task logs on `pueue remove`. [#187](https://github.com/Nukesor/pueue/issues/187)
-- Improve Windows support by [oiatz](https://github.com/oiatz). [#114](https://github.com/Nukesor/pueue/issues/114)
+- Improve Windows support. [#114](https://github.com/Nukesor/pueue/issues/114)
 - Fix empty output for empty groups when requesting specific group with `status -g $name`. [#190](https://github.com/Nukesor/pueue/issues/190)
 - Fix missing output when explicitly requesting default group with `status -g default`. [#190](https://github.com/Nukesor/pueue/issues/190)
 
@@ -793,7 +843,7 @@ This version adds breaking changes:
 
 - Non-existing tasks were displayed as successfully removed. [#108](https://github.com/Nukesor/pueue/issues/108)
 - Remove child process handling logic for MacOs, since the library simply doesn't support this.
-- Remove unneeded `config` features and reduce compile time by ~10%. Contribution by [LovecraftianHorror](https://github.com/LovecraftianHorror) [#112](https://github.com/Nukesor/pueue/issues/112)
+- Remove unneeded `config` features and reduce compile time by ~10%.
 - Remove futures-timers, effectively reducing compile time by ~14%. [#112](https://github.com/Nukesor/pueue/issues/112)
 - Update to comfy-table v1.1.0, reducing compile time by another ~10%. [#112](https://github.com/Nukesor/pueue/issues/112)
 

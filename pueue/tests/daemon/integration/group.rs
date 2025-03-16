@@ -1,8 +1,6 @@
-use anyhow::Result;
+use pueue_lib::{Task, message::*};
 
-use pueue_lib::network::message::*;
-
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// Add and directly remove a group.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -14,15 +12,15 @@ async fn test_add_and_remove() -> Result<()> {
     add_group_with_slots(shared, "testgroup", 1).await?;
 
     // Try to add the same group again. This should fail
-    let add_message = GroupMessage::Add {
+    let add_message = GroupRequest::Add {
         name: "testgroup".to_string(),
         parallel_tasks: None,
     };
-    assert_failure(send_message(shared, add_message).await?);
+    assert_failure(send_request(shared, add_message).await?);
 
     // Remove the newly added group and wait for the deletion to be processed.
-    let remove_message = GroupMessage::Remove("testgroup".to_string());
-    assert_success(send_message(shared, remove_message.clone()).await?);
+    let remove_message = GroupRequest::Remove("testgroup".to_string());
+    assert_success(send_request(shared, remove_message.clone()).await?);
     wait_for_group_absence(shared, "testgroup").await?;
 
     // Make sure it got removed
@@ -37,8 +35,8 @@ async fn test_add_and_remove() -> Result<()> {
 async fn test_cannot_delete_default() -> Result<()> {
     let daemon = daemon().await?;
 
-    let message = GroupMessage::Remove(PUEUE_DEFAULT_GROUP.to_string());
-    assert_failure(send_message(&daemon.settings.shared, message).await?);
+    let message = GroupRequest::Remove(PUEUE_DEFAULT_GROUP.to_string());
+    assert_failure(send_request(&daemon.settings.shared, message).await?);
 
     Ok(())
 }
@@ -48,8 +46,8 @@ async fn test_cannot_delete_default() -> Result<()> {
 async fn test_cannot_delete_non_existing() -> Result<()> {
     let daemon = daemon().await?;
 
-    let message = GroupMessage::Remove("doesnt_exist".to_string());
-    assert_failure(send_message(&daemon.settings.shared, message).await?);
+    let message = GroupRequest::Remove("doesnt_exist".to_string());
+    assert_failure(send_request(&daemon.settings.shared, message).await?);
 
     Ok(())
 }
@@ -65,19 +63,19 @@ async fn test_cannot_delete_group_with_tasks() -> Result<()> {
 
     // Add a task
     assert_success(add_task_to_group(shared, "ls", "testgroup").await?);
-    wait_for_task_condition(&daemon.settings.shared, 0, |task| task.is_done()).await?;
+    wait_for_task_condition(&daemon.settings.shared, 0, Task::is_done).await?;
 
     // We shouldn't be capable of removing that group
-    let message = GroupMessage::Remove("testgroup".to_string());
-    assert_failure(send_message(shared, message).await?);
+    let message = GroupRequest::Remove("testgroup".to_string());
+    assert_failure(send_request(shared, message).await?);
 
     // Remove the task from the group
-    let remove_message = Message::Remove(vec![0]);
-    send_message(shared, remove_message).await?;
+    let remove_message = Request::Remove(vec![0]);
+    send_request(shared, remove_message).await?;
 
     // Removal should now work.
-    let message = GroupMessage::Remove("testgroup".to_string());
-    assert_success(send_message(shared, message).await?);
+    let message = GroupRequest::Remove("testgroup".to_string());
+    assert_success(send_request(shared, message).await?);
 
     Ok(())
 }

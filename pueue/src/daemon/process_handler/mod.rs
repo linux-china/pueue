@@ -1,11 +1,13 @@
-use anyhow::Result;
-use log::{debug, error};
+use pueue_lib::{
+    Settings,
+    message::{ShutdownRequest, TaskSelection},
+};
 
-use pueue_lib::network::message::{Shutdown, TaskSelection};
-use pueue_lib::process_helper::{send_signal_to_child, ProcessAction};
-use pueue_lib::settings::Settings;
-
-use super::state_helper::LockedState;
+use crate::{
+    daemon::internal_state::state::LockedState,
+    internal_prelude::*,
+    process_helper::{ProcessAction, send_signal_to_child},
+};
 
 pub mod finish;
 pub mod kill;
@@ -23,11 +25,10 @@ macro_rules! ok_or_shutdown {
     ($settings:expr, $state:expr, $result:expr) => {
         match $result {
             Err(err) => {
-                use log::error;
-                use pueue_lib::network::message::Shutdown;
+                use pueue_lib::message::ShutdownRequest;
                 use $crate::daemon::process_handler::initiate_shutdown;
                 error!("Initializing graceful shutdown. Encountered error in TaskHandler: {err}");
-                initiate_shutdown($settings, $state, Shutdown::Emergency);
+                initiate_shutdown($settings, $state, ShutdownRequest::Emergency);
                 return;
             }
             Ok(inner) => inner,
@@ -38,10 +39,10 @@ macro_rules! ok_or_shutdown {
 /// Initiate shutdown, which includes killing all children and pausing all groups.
 /// We don't have to pause any groups, as no new tasks will be spawned during shutdown anyway.
 /// Any groups with queued tasks, will be automatically paused on state-restoration.
-pub fn initiate_shutdown(settings: &Settings, state: &mut LockedState, shutdown: Shutdown) {
+pub fn initiate_shutdown(settings: &Settings, state: &mut LockedState, shutdown: ShutdownRequest) {
     // Only start shutdown if we aren't already in one.
-    // Otherwise, we might end up with an endless recursion as `kill` might fail and initiate shutdown
-    // once again.
+    // Otherwise, we might end up with an endless recursion as `kill` might fail and initiate
+    // shutdown once again.
     if state.shutdown.is_none() {
         state.shutdown = Some(shutdown);
         self::kill::kill(settings, state, TaskSelection::All, false, None);
@@ -54,7 +55,7 @@ pub fn perform_action(state: &mut LockedState, id: usize, action: ProcessAction)
     match state.children.get_child_mut(id) {
         Some(child) => {
             debug!("Executing action {action:?} to {id}");
-            send_signal_to_child(child, &action)?;
+            send_signal_to_child(child, action.into())?;
 
             Ok(true)
         }

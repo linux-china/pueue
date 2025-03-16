@@ -1,11 +1,7 @@
-use anyhow::{Context, Result};
 use assert_matches::assert_matches;
+use pueue_lib::{GroupStatus, message::*, task::*};
 
-use pueue_lib::network::message::*;
-use pueue_lib::state::GroupStatus;
-use pueue_lib::task::*;
-
-use crate::helper::*;
+use crate::{helper::*, internal_prelude::*};
 
 /// Make sure that no tasks will be started in a paused queue
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -40,21 +36,26 @@ async fn test_pause_running_task() -> Result<()> {
 
     // Start a long running task and make sure it's started
     add_task(shared, "sleep 60").await?;
-    wait_for_task_condition(shared, 0, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 0, Task::is_running).await?;
 
     // This pauses the daemon
     pause_tasks(shared, TaskSelection::All).await?;
 
     // Make sure the task as well as the default group get paused
-    wait_for_task_condition(shared, 0, |task| {
-        matches!(task.status, TaskStatus::Paused { .. })
-    })
+    assert_group_status(
+        shared,
+        PUEUE_DEFAULT_GROUP,
+        GroupStatus::Paused,
+        "Default group should be paused.",
+    )
     .await?;
-    let state = get_state(shared).await?;
-    assert_eq!(
-        state.groups.get(PUEUE_DEFAULT_GROUP).unwrap().status,
-        GroupStatus::Paused
-    );
+    assert_task_condition(
+        shared,
+        0,
+        Task::is_paused,
+        "All default groups should be paused.",
+    )
+    .await?;
 
     Ok(())
 }
@@ -67,25 +68,32 @@ async fn test_pause_with_wait() -> Result<()> {
 
     // Start a long running task and make sure it's started
     add_task(shared, "sleep 60").await?;
-    wait_for_task_condition(shared, 0, |task| task.is_running()).await?;
+    wait_for_task_condition(shared, 0, Task::is_running).await?;
 
     // Pauses the default queue while waiting for tasks
-    let message = PauseMessage {
+    let message = PauseRequest {
         tasks: TaskSelection::Group(PUEUE_DEFAULT_GROUP.into()),
         wait: true,
     };
-    send_message(shared, message)
+    send_request(shared, message)
         .await
         .context("Failed to send message")?;
 
     // Make sure the default group gets paused, but the task is still running
-    wait_for_group_status(shared, PUEUE_DEFAULT_GROUP, GroupStatus::Paused).await?;
-    let state = get_state(shared).await?;
-    assert_matches!(
-        state.tasks.get(&0).unwrap().status,
-        TaskStatus::Running { .. },
-        "Task should continue running after group is paused."
-    );
+    assert_group_status(
+        shared,
+        PUEUE_DEFAULT_GROUP,
+        GroupStatus::Paused,
+        "Default group should be paused.",
+    )
+    .await?;
+    assert_task_condition(
+        shared,
+        0,
+        Task::is_running,
+        "Task should continue running after group is paused.",
+    )
+    .await?;
 
     Ok(())
 }
